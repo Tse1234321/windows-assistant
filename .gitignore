@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+release/
+
+# Generated icons (regenerated via `npm run gen:icons`)
+build/icon.png
+electron/assets/tray-icon.png
+
+# Logs
+npm-debug.log*
+*.log
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local runtime state (written by the app at runtime)
+config/runtime-state.json

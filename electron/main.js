@@ -1,0 +1,252 @@
+'use strict';
+
+const path = require('path');
+const fs = require('fs');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage } = require('electron');
+
+const settingsService = require('./services/settingsService');
+const systemMonitorService = require('./services/systemMonitorService');
+const fileOrganizerService = require('./services/fileOrganizerService');
+const gitService = require('./services/gitService');
+const modeService = require('./services/modeService');
+
+const isDev = !app.isPackaged;
+
+let mainWindow = null;
+let tray = null;
+app.isQuitting = false;
+
+// Ensure only a single instance runs (so the tray icon isn't duplicated).
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+
+function getTrayIconPath() {
+  const candidate = path.join(__dirname, 'assets', 'tray-icon.png');
+  if (fs.existsSync(candidate)) return candidate;
+  // Fall back to the app icon if the tray icon was not generated.
+  const fallback = isDev
+    ? path.join(__dirname, '..', 'build', 'icon.png')
+    : path.join(process.resourcesPath, 'icon.png');
+  return fallback;
+}
+
+function loadConfig() {
+  const res = settingsService.getSettings();
+  return res.settings || settingsService.DEFAULT_SETTINGS;
+}
+
+function createWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    return mainWindow;
+  }
+
+  mainWindow = new BrowserWindow({
+    width: 1040,
+    height: 720,
+    minWidth: 820,
+    minHeight: 560,
+    show: false,
+    backgroundColor: '#0f172a',
+    icon: getTrayIconPath(),
+    title: 'PC Life Assistant',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  mainWindow.removeMenu();
+
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5173');
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  }
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+  // Close button minimises to the system tray instead of quitting.
+  mainWindow.on('close', (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
+  return mainWindow;
+}
+
+function showWindow(navigateTo) {
+  const win = createWindow();
+  win.show();
+  win.focus();
+  if (navigateTo) {
+    const send = () => win.webContents.send('app:navigate', navigateTo);
+    if (win.webContents.isLoading()) {
+      win.webContents.once('did-finish-load', send);
+    } else {
+      send();
+    }
+  }
+}
+
+async function runProgrammingModeFromTray() {
+  try {
+    const config = loadConfig();
+    const result = await modeService.runMode(config, config.modes[0] ? config.modes[0].name : null);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:mode-result', result);
+    }
+  } catch (err) {
+    console.error('[main] tray run mode failed:', err);
+  }
+}
+
+function createTray() {
+  const iconPath = getTrayIconPath();
+  let image = nativeImage.createFromPath(iconPath);
+  if (process.platform === 'win32' && !image.isEmpty()) {
+    image = image.resize({ width: 16, height: 16 });
+  }
+  tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
+  tray.setToolTip('PC Life Assistant');
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: '開啟 PC Life Assistant', click: () => showWindow('dashboard') },
+    { type: 'separator' },
+    { label: '寫程式模式', click: () => runProgrammingModeFromTray() },
+    { label: '整理 Downloads', click: () => showWindow('files') },
+    { label: '檢查 Git', click: () => showWindow('health') },
+    { type: 'separator' },
+    {
+      label: '離開',
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+  tray.on('click', () => showWindow('dashboard'));
+}
+
+// ---------------------------------------------------------------------------
+// IPC handlers (clearly namespaced: <domain>:<action>)
+// ---------------------------------------------------------------------------
+function registerIpc() {
+  ipcMain.handle('system:getStatus', async () => {
+    try {
+      const config = loadConfig();
+      const metrics = await systemMonitorService.getMetrics({
+        monitorDrive: config.general && config.general.monitorDrive,
+      });
+      const unsorted = fileOrganizerService.countUnsorted(
+        config.general && config.general.downloadsPath
+      );
+      const git = await gitService.checkAll(config.projects);
+      const health = systemMonitorService.computeHealthScore(metrics, {
+        unsortedDownloads: unsorted.count,
+        hasStaleProject: git.hasStaleProject,
+      });
+      return {
+        ok: true,
+        metrics,
+        downloads: unsorted,
+        git,
+        health,
+      };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('mode:list', async () => {
+    const config = loadConfig();
+    return { ok: true, modes: modeService.listModes(config) };
+  });
+
+  ipcMain.handle('mode:run', async (_event, modeName) => {
+    const config = loadConfig();
+    return modeService.runMode(config, modeName);
+  });
+
+  ipcMain.handle('files:scan', async () => {
+    const config = loadConfig();
+    return fileOrganizerService.scan(config.general && config.general.downloadsPath);
+  });
+
+  ipcMain.handle('files:organize', async (_event, items) => {
+    return fileOrganizerService.organize(items);
+  });
+
+  ipcMain.handle('git:check', async () => {
+    const config = loadConfig();
+    return gitService.checkAll(config.projects);
+  });
+
+  ipcMain.handle('settings:get', async () => settingsService.getSettings());
+
+  ipcMain.handle('settings:save', async (_event, newSettings) =>
+    settingsService.saveSettings(newSettings)
+  );
+
+  ipcMain.handle('settings:openFile', async () => {
+    const res = settingsService.getSettings();
+    try {
+      await shell.openPath(res.path);
+      return { ok: true, path: res.path };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('shell:openExternal', async (_event, url) => {
+    try {
+      await shell.openExternal(url);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('app:minimizeToTray', async () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+    return { ok: true };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// App lifecycle
+// ---------------------------------------------------------------------------
+app.on('second-instance', () => {
+  showWindow('dashboard');
+});
+
+app.whenReady().then(() => {
+  registerIpc();
+  createWindow();
+  createTray();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    else showWindow();
+  });
+});
+
+// Keep running in the tray even when all windows are closed (Windows-first behaviour).
+app.on('window-all-closed', () => {
+  // Intentionally do nothing: the app lives in the tray until the user chooses "離開".
+});
+
+app.on('before-quit', () => {
+  app.isQuitting = true;
+});

@@ -1,0 +1,35 @@
+{
+  "general": {
+    "downloadsPath": "",
+    "monitorDrive": ""
+  },
+  "modes": [
+    {
+      "name": "寫程式模式",
+      "apps": [
+        "C:\\Users\\User\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
+      ],
+      "folders": [
+        "D:\\Projects\\codex"
+      ],
+      "urls": [
+        "http://localhost:5173",
+        "https://github.com/jeremywu0420/codex"
+      ],
+      "commands": [
+        {
+          "cwd": "D:\\Projects\\codex",
+          "command": "npm run dev"
+        }
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "codex",
+      "path": "D:\\Projects\\codex",
+      "gitReminderHours": 2,
+      "backupReminderHours": 24
+    }
+  ]
+}
