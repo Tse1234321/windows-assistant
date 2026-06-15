@@ -8,31 +8,24 @@ function buildAlerts(status) {
   const alerts = [];
   if (!status) return alerts;
 
-  const downloads = status.downloads || {};
-  if (downloads.ok && downloads.count > 0) {
-    alerts.push({
-      level: downloads.count > 50 ? 'warn' : 'info',
-      title: `Downloads 有 ${downloads.count} 個未分類檔案`,
-      desc: '前往「整理 Downloads」可以預覽並分類。',
-    });
+  // Smart Rules drive the threshold-based alerts (downloads/ram/disk/stale).
+  const ruleAlerts = (status.rules && status.rules.alerts) || [];
+  for (const a of ruleAlerts) {
+    alerts.push({ level: a.level || 'warn', title: a.title, desc: a.desc });
   }
 
+  // Per-project git details that rules don't cover (uncommitted file counts / repo errors).
   const projects = (status.git && status.git.projects) || [];
   for (const p of projects) {
     if (p.error) {
       alerts.push({ level: 'info', title: `${p.name}：${p.error}`, desc: p.path });
-    } else if (p.gitReminder || p.backupReminder) {
+    } else if (p.modifiedCount > 0) {
       alerts.push({
-        level: p.backupReminder ? 'danger' : 'warn',
-        title: `${p.name} 專案需要注意`,
+        level: 'warn',
+        title: `${p.name} 有 ${p.modifiedCount} 個檔案尚未 commit`,
         desc: p.messages.join('；'),
       });
     }
-  }
-
-  const deductions = (status.health && status.health.deductions) || [];
-  for (const d of deductions) {
-    alerts.push({ level: 'warn', title: 'Health Score 扣分', desc: `${d.reason} (${d.points})` });
   }
 
   return alerts;

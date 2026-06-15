@@ -17,6 +17,10 @@
 | ❤️ **PC 健康監控** | CPU / RAM / 磁碟 / 開機時間 + PC Health Score（100 分起算扣分制） |
 | 🔧 **Git / 備份提醒** | 檢查專案是否為 git repo、未 commit 檔案數、距上次 commit 時間（只提醒，不自動 commit / push） |
 | 🟦 **System Tray 常駐** | 關閉視窗會縮小到右下角系統匣，右鍵選單可快速操作 |
+| 📁 **Project Hub**（v1.1） | 集中管理 config 內的專案，一鍵開啟資料夾 / VS Code / Terminal / `npm run dev` / Git status |
+| ⌨️ **Command Palette**（v1.1） | 全域快捷鍵 **Ctrl+Shift+P**，搜尋並執行指令（導航、開啟專案、跑 npm run dev、啟動模式） |
+| 🔔 **Smart Rules**（v1.1） | JSON 規則：Downloads 數量 / RAM% / 專案太久沒 commit / Disk 剩餘空間，達門檻時提醒（只提醒，不自動執行危險操作） |
+| 🖼️ **Screenshot Organizer**（v1.1） | 依檔名關鍵字將截圖分類到 Code / Circuit / Report / School / Other，先預覽再移動、不刪除、重名加編號 |
 
 ### PC Health Score 計分規則
 
@@ -53,11 +57,15 @@ pc-life-assistant/
 │     ├─ systemMonitorService.js
 │     ├─ fileOrganizerService.js
 │     ├─ gitService.js
-│     └─ modeService.js
+│     ├─ modeService.js
+│     ├─ projectService.js     # v1.1 Project Hub 動作
+│     ├─ commandService.js     # v1.1 Command Palette action registry
+│     ├─ ruleService.js        # v1.1 Smart Rules 評估
+│     └─ screenshotService.js  # v1.1 截圖分類掃描
 ├─ src/
 │  ├─ main.jsx / App.jsx
-│  ├─ pages/                   # Dashboard / Modes / FileOrganizer / HealthMonitor / Settings
-│  ├─ components/              # Layout / StatusCard / ActionButton / AlertList
+│  ├─ pages/                   # Dashboard / Projects / Modes / FileOrganizer / Screenshots / Rules / HealthMonitor / Settings
+│  ├─ components/              # Layout / StatusCard / ActionButton / AlertList / CommandPalette
 │  ├─ utils/format.js
 │  └─ styles/global.css
 ├─ config/
@@ -123,6 +131,16 @@ npm run package:dir   # 輸出到 release/win-unpacked/
 
 ---
 
+## ⌨️ Command Palette（Ctrl+Shift+P）
+
+按 **Ctrl+Shift+P**（全域快捷鍵，App 在背景時也有效）即可開啟快速指令面板：
+
+- 用 ↑ ↓ 選擇、Enter 執行、Esc 關閉。
+- 內建：開啟各頁面、用 VS Code 開啟某專案、執行某專案的 `npm run dev`、啟動工作模式。
+- 指令清單由 `electron/services/commandService.js`（action registry）統一管理，會依 `config` 的 projects / modes 動態產生。
+
+---
+
 ## ⚙️ 設定（user-settings.json）
 
 可在 App 內「設定」頁直接編輯並儲存，或手動編輯檔案。**Windows 路徑請使用雙反斜線**。
@@ -158,7 +176,10 @@ npm run package:dir   # 輸出到 release/win-unpacked/
 - `general.downloadsPath`：自訂 Downloads 路徑（留空 → 使用者家目錄下的 `Downloads`）。
 - `general.monitorDrive`：要監控的磁碟（留空 → 系統磁碟，Windows 通常是 `C:\`）。
 - `modes[]`：每個工作模式的 `apps` / `folders` / `urls` / `commands`。
-- `projects[]`：要追蹤 Git 的專案與提醒時數。
+- `projects[]`：要追蹤 Git 的專案與提醒時數（也是 Project Hub 與 Command Palette 的來源）。
+- `rules[]`（v1.1）：Smart Rules，每條含 `type`（`downloadsCount` / `ramUsage` / `projectStale` / `diskFree`）、`threshold`、`level`、`enabled`。可在「Smart Rules」頁面用 UI 調整。
+- `screenshots.path`（v1.1）：截圖資料夾（留空 → `~/Pictures/Screenshots`）。
+- `screenshots.keywords`（v1.1）：自訂分類關鍵字，例如 `{ "Circuit": ["pcb", "電路"] }`（會與內建關鍵字合併）。
 
 > 預設值請依你的電腦調整路徑（例如 VS Code 安裝路徑、專案位置）。
 

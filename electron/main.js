@@ -2,13 +2,17 @@
 
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage, globalShortcut } = require('electron');
 
 const settingsService = require('./services/settingsService');
 const systemMonitorService = require('./services/systemMonitorService');
 const fileOrganizerService = require('./services/fileOrganizerService');
 const gitService = require('./services/gitService');
 const modeService = require('./services/modeService');
+const projectService = require('./services/projectService');
+const commandService = require('./services/commandService');
+const ruleService = require('./services/ruleService');
+const screenshotService = require('./services/screenshotService');
 
 const isDev = !app.isPackaged;
 
@@ -157,12 +161,23 @@ function registerIpc() {
         unsortedDownloads: unsorted.count,
         hasStaleProject: git.hasStaleProject,
       });
+      const rules = ruleService.evaluate(config, {
+        downloadsCount: unsorted.count,
+        ramPercent: metrics.memory.usagePercent,
+        diskFreePercent: metrics.disk.freePercent,
+        diskOk: metrics.disk.ok,
+        projects: (git.projects || []).map((p) => ({
+          name: p.name,
+          hoursSinceCommit: p.hoursSinceCommit,
+        })),
+      });
       return {
         ok: true,
         metrics,
         downloads: unsorted,
         git,
         health,
+        rules,
       };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -222,6 +237,50 @@ function registerIpc() {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
     return { ok: true };
   });
+
+  // --- Project Hub ---
+  ipcMain.handle('project:list', async () => {
+    const config = loadConfig();
+    return projectService.listProjects(config);
+  });
+
+  ipcMain.handle('project:action', async (_event, payload) => {
+    const config = loadConfig();
+    return projectService.runAction(config, payload);
+  });
+
+  // --- Command Palette ---
+  ipcMain.handle('command:list', async () => {
+    const config = loadConfig();
+    return { ok: true, commands: commandService.listCommands(config) };
+  });
+
+  ipcMain.handle('command:run', async (_event, commandId) => {
+    const config = loadConfig();
+    return commandService.runCommand(config, commandId);
+  });
+
+  // --- Smart Rules ---
+  ipcMain.handle('rules:get', async () => {
+    const config = loadConfig();
+    return { ok: true, rules: ruleService.getRules(config), types: ruleService.RULE_TYPES };
+  });
+
+  ipcMain.handle('rules:save', async (_event, rules) => {
+    const res = settingsService.getSettings();
+    const next = { ...res.settings, rules: Array.isArray(rules) ? rules : [] };
+    return settingsService.saveSettings(next);
+  });
+
+  // --- Screenshot Organizer (reuses fileOrganizerService.organize for moving) ---
+  ipcMain.handle('screenshots:scan', async () => {
+    const config = loadConfig();
+    return screenshotService.scan(config);
+  });
+
+  ipcMain.handle('screenshots:organize', async (_event, items) => {
+    return fileOrganizerService.organize(items);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -231,15 +290,37 @@ app.on('second-instance', () => {
   showWindow('dashboard');
 });
 
+function openCommandPalette() {
+  const win = createWindow();
+  win.show();
+  win.focus();
+  const send = () => win.webContents.send('app:open-command-palette');
+  if (win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', send);
+  } else {
+    send();
+  }
+}
+
 app.whenReady().then(() => {
   registerIpc();
   createWindow();
   createTray();
 
+  // Global shortcut: Ctrl+Shift+P opens the Command Palette (works even unfocused).
+  const registered = globalShortcut.register('CommandOrControl+Shift+P', openCommandPalette);
+  if (!registered) {
+    console.warn('[main] 無法註冊 Ctrl+Shift+P 全域快捷鍵（可能已被其他程式佔用）。');
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     else showWindow();
   });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 // Keep running in the tray even when all windows are closed (Windows-first behaviour).

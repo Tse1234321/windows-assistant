@@ -1,8 +1,19 @@
 {
   "general": {
     "downloadsPath": "",
-    "monitorDrive": ""
+    "monitorDrive": "",
+    "screenshotsPath": ""
   },
+  "screenshots": {
+    "path": "",
+    "keywords": {}
+  },
+  "rules": [
+    { "id": "downloads-count", "type": "downloadsCount", "label": "Downloads 檔案數提醒", "enabled": true, "threshold": 50, "level": "warn" },
+    { "id": "ram-usage", "type": "ramUsage", "label": "RAM 使用率提醒", "enabled": true, "threshold": 80, "level": "warn" },
+    { "id": "project-stale", "type": "projectStale", "label": "專案太久沒 commit 提醒", "enabled": true, "threshold": 24, "level": "warn" },
+    { "id": "disk-free", "type": "diskFree", "label": "磁碟剩餘空間提醒", "enabled": true, "threshold": 20, "level": "danger" }
+  ],
   "modes": [
     {
       "name": "寫程式模式",

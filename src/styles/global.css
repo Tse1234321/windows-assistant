@@ -431,3 +431,79 @@ button {
   background: rgba(239, 68, 68, 0.12);
   color: #fecaca;
 }
+
+/* ---------- Command Palette ---------- */
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.6);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 1000;
+}
+
+.palette {
+  width: min(620px, 90vw);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.palette-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  padding: 16px 18px;
+  outline: none;
+}
+
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.palette-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.palette-item.active {
+  background: var(--accent-strong);
+  color: #fff;
+}
+
+.palette-item.active .palette-hint {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.palette-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.palette-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: "Cascadia Code", "Consolas", monospace;
+  word-break: break-all;
+}
+
+.palette-empty {
+  padding: 16px;
+  color: var(--text-dim);
+  text-align: center;
+}

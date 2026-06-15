@@ -2,8 +2,11 @@ import React from 'react';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', icon: '📊' },
+  { key: 'projects', label: 'Project Hub', icon: '📁' },
   { key: 'modes', label: '工作模式', icon: '🚀' },
   { key: 'files', label: '整理 Downloads', icon: '🗂️' },
+  { key: 'screenshots', label: '截圖整理', icon: '🖼️' },
+  { key: 'rules', label: 'Smart Rules', icon: '🔔' },
   { key: 'health', label: '健康監控 / Git', icon: '❤️' },
   { key: 'settings', label: '設定', icon: '⚙️' },
 ];
@@ -30,7 +33,9 @@ export default function Layout({ current, onNavigate, children }) {
         </nav>
         <div className="spacer" />
         <div className="footer">
-          v1.0.0 · MVP
+          v1.1.0
+          <br />
+          Ctrl+Shift+P 快速指令
           <br />
           常駐於系統匣
         </div>

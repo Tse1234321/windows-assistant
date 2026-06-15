@@ -17,9 +17,15 @@ const DEFAULT_SETTINGS = {
   general: {
     downloadsPath: '',
     monitorDrive: '',
+    screenshotsPath: '',
   },
   modes: [],
   projects: [],
+  rules: [],
+  screenshots: {
+    path: '',
+    keywords: {},
+  },
 };
 
 function bundledConfigPath() {
@@ -70,6 +76,8 @@ function getSettings() {
         general: { ...DEFAULT_SETTINGS.general, ...(parsed.general || {}) },
         modes: Array.isArray(parsed.modes) ? parsed.modes : [],
         projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+        rules: Array.isArray(parsed.rules) ? parsed.rules : [],
+        screenshots: { ...DEFAULT_SETTINGS.screenshots, ...(parsed.screenshots || {}) },
       },
     };
   } catch (err) {
