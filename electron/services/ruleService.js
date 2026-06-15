@@ -56,7 +56,11 @@ function getRules(config) {
 }
 
 /**
- * context = { downloadsCount, ramPercent, diskFreePercent, diskOk, projects: [{name, hoursSinceCommit}] }
+ * context = {
+ *   downloadsCount, ramPercent,
+ *   disks: [{ drive, freePercent, ok }],
+ *   projects: [{ name, hoursSinceCommit }]
+ * }
  * Returns { alerts: [{ ruleId, level, title, desc }] }
  */
 function evaluate(config, context) {
@@ -90,16 +94,22 @@ function evaluate(config, context) {
           });
         }
         break;
-      case 'diskFree':
-        if (ctx.diskOk && ctx.diskFreePercent < threshold) {
-          alerts.push({
-            ruleId: rule.id,
-            level,
-            title: `磁碟剩餘 ${ctx.diskFreePercent}%（規則下限 ${threshold}%）`,
-            desc: '建議清理檔案或移動到其他磁碟。',
-          });
+      case 'diskFree': {
+        // One alert per drive below the threshold, so the user sees exactly
+        // which disk is low (e.g. "C:\ 剩餘空間低於 20%").
+        const disks = Array.isArray(ctx.disks) ? ctx.disks : [];
+        for (const disk of disks) {
+          if (disk.ok && disk.freePercent < threshold) {
+            alerts.push({
+              ruleId: rule.id,
+              level,
+              title: `${disk.drive} 剩餘空間低於 ${threshold}%（目前 ${disk.freePercent}%）`,
+              desc: '建議清理檔案或移動到其他磁碟。',
+            });
+          }
         }
         break;
+      }
       case 'projectStale': {
         const stale = (ctx.projects || []).filter(
           (p) => p.hoursSinceCommit !== null && p.hoursSinceCommit !== undefined && p.hoursSinceCommit >= threshold

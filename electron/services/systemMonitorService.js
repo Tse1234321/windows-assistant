@@ -77,35 +77,81 @@ async function getDiskUsage(targetPath) {
     // fs.statfs is available in Node 18.15+ and works on Windows/macOS/Linux.
     const stats = await fs.promises.statfs(drivePath);
     const blockSize = stats.bsize;
-    const totalBytes = stats.blocks * blockSize;
-    const freeBytes = stats.bavail * blockSize;
-    const usedBytes = totalBytes - freeBytes;
-    const freePercent = totalBytes > 0 ? Math.round((freeBytes / totalBytes) * 100) : 0;
-    return {
-      ok: true,
-      drive: drivePath,
-      totalBytes,
-      freeBytes,
-      usedBytes,
-      freePercent,
-    };
+    const total = stats.blocks * blockSize;
+    const free = stats.bavail * blockSize;
+    const used = total - free;
+    const freePercent = total > 0 ? Math.round((free / total) * 100) : 0;
+    const usedPercent = total > 0 ? Math.round((used / total) * 100) : 0;
+    return { ok: true, drive: drivePath, total, free, used, freePercent, usedPercent };
   } catch (err) {
     return {
       ok: false,
       drive: drivePath,
       error: `無法讀取磁碟資訊：${err.message}`,
-      totalBytes: 0,
-      freeBytes: 0,
-      usedBytes: 0,
+      total: 0,
+      free: 0,
+      used: 0,
       freePercent: 0,
+      usedPercent: 0,
     };
   }
+}
+
+/**
+ * Auto-detect available drives.
+ * Windows: probe drive letters C: through Z: (skip A:/B: floppy legacy).
+ * Other platforms: just the filesystem root.
+ */
+async function detectDrives() {
+  if (process.platform !== 'win32') return ['/'];
+  const letters = [];
+  for (let code = 'C'.charCodeAt(0); code <= 'Z'.charCodeAt(0); code += 1) {
+    letters.push(`${String.fromCharCode(code)}:\\`);
+  }
+  const checks = await Promise.all(
+    letters.map(async (drive) => {
+      try {
+        await fs.promises.statfs(drive);
+        return drive;
+      } catch (_) {
+        return null; // drive letter not mounted
+      }
+    })
+  );
+  const found = checks.filter(Boolean);
+  return found.length > 0 ? found : [defaultDrivePath()];
+}
+
+/**
+ * Resolve which drives to monitor, with backward compatibility:
+ *   1. monitorDrives (array, non-empty) — preferred
+ *   2. monitorDrive (legacy string) — used if monitorDrives is absent/empty
+ *   3. otherwise auto-detect all available drives
+ */
+async function resolveDrives(options = {}) {
+  const { monitorDrives, monitorDrive } = options;
+  if (Array.isArray(monitorDrives) && monitorDrives.filter((d) => d && d.trim()).length > 0) {
+    return monitorDrives.filter((d) => d && d.trim());
+  }
+  if (monitorDrive && monitorDrive.trim()) {
+    return [monitorDrive.trim()];
+  }
+  return detectDrives();
+}
+
+/**
+ * Returns disk usage for every monitored drive. A failure on one drive never
+ * affects the others — it comes back as an entry with ok:false + error.
+ */
+async function getDisksUsage(options = {}) {
+  const drives = await resolveDrives(options);
+  return Promise.all(drives.map((drive) => getDiskUsage(drive)));
 }
 
 async function getMetrics(options = {}) {
   const cpu = await getCpuUsage();
   const memory = getMemoryUsage();
-  const disk = await getDiskUsage(options.monitorDrive);
+  const disks = await getDisksUsage(options);
   const uptimeSeconds = os.uptime();
   const sustainedHighCpu =
     cpuHistory.length >= 3 &&
@@ -118,7 +164,7 @@ async function getMetrics(options = {}) {
       cores: os.cpus().length,
     },
     memory,
-    disk,
+    disks,
     uptimeSeconds,
     hostname: os.hostname(),
     platform: process.platform,
@@ -138,9 +184,16 @@ function computeHealthScore(metrics, extras = {}) {
     score -= 10;
     deductions.push({ reason: `RAM 使用率 ${metrics.memory.usagePercent}%（> 80%）`, points: -10 });
   }
-  if (metrics.disk.ok && metrics.disk.freePercent < 20) {
+  // Any monitored drive below 20% free triggers the disk penalty once.
+  const lowDrives = (metrics.disks || []).filter((d) => d.ok && d.freePercent < 20);
+  if (lowDrives.length > 0) {
     score -= 15;
-    deductions.push({ reason: `磁碟剩餘空間 ${metrics.disk.freePercent}%（< 20%）`, points: -15 });
+    deductions.push({
+      reason: `磁碟剩餘空間不足（< 20%）：${lowDrives
+        .map((d) => `${d.drive} ${d.freePercent}%`)
+        .join('、')}`,
+      points: -15,
+    });
   }
   if (metrics.cpu.sustainedHigh) {
     score -= 10;
@@ -167,6 +220,9 @@ module.exports = {
   getCpuUsage,
   getMemoryUsage,
   getDiskUsage,
+  getDisksUsage,
+  detectDrives,
+  resolveDrives,
   getMetrics,
   computeHealthScore,
   defaultDrivePath,

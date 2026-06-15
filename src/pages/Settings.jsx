@@ -92,7 +92,9 @@ export default function Settings() {
             <code>general.downloadsPath</code>：自訂 Downloads 路徑（留空則用使用者家目錄）。
           </li>
           <li>
-            <code>general.monitorDrive</code>：要監控的磁碟（留空則用系統磁碟，例如 C:\）。
+            <code>general.monitorDrives</code>：要監控的磁碟陣列，例如{' '}
+            <code>["C:\\", "D:\\"]</code>；空陣列 <code>[]</code> 會自動偵測所有可用磁碟。（仍相容舊的{' '}
+            <code>monitorDrive</code> 單一字串設定。）
           </li>
           <li>
             <code>modes[]</code>：工作模式，含 apps / folders / urls / commands。

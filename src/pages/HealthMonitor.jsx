@@ -91,14 +91,21 @@ export default function HealthMonitor() {
           barPercent={metrics ? metrics.memory.usagePercent : 0}
           barLevel={metrics ? usageLevel(metrics.memory.usagePercent) : 'ok'}
         />
-        <StatusCard
-          label="磁碟剩餘"
-          icon="🗄️"
-          value={metrics && metrics.disk.ok ? formatGB(metrics.disk.freeBytes) : '—'}
-          sub={metrics && metrics.disk.ok ? `剩餘 ${metrics.disk.freePercent}% · ${metrics.disk.drive}` : '無法讀取'}
-          barPercent={metrics && metrics.disk.ok ? 100 - metrics.disk.freePercent : 0}
-          barLevel={metrics && metrics.disk.ok && metrics.disk.freePercent < 20 ? 'danger' : 'ok'}
-        />
+        {(metrics && metrics.disks ? metrics.disks : []).map((d, i) =>
+          d.ok ? (
+            <StatusCard
+              key={i}
+              label={`磁碟 ${d.drive}`}
+              icon="🗄️"
+              value={formatGB(d.free)}
+              sub={`剩餘 ${d.freePercent}% · 共 ${formatGB(d.total)}`}
+              barPercent={d.usedPercent}
+              barLevel={d.freePercent < 20 ? 'danger' : 'ok'}
+            />
+          ) : (
+            <StatusCard key={i} label={`磁碟 ${d.drive}`} icon="🗄️" value="—" sub={d.error || '無法讀取'} />
+          )
+        )}
         <StatusCard
           label="開機時間"
           icon="⏱️"

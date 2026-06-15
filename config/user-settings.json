@@ -1,7 +1,7 @@
 {
   "general": {
     "downloadsPath": "D:\\我的資料庫\\Downloads",
-    "monitorDrive": "C:\\",
+    "monitorDrives": ["C:\\", "D:\\"],
     "screenshotsPath": "D:\\我的資料庫\\Pictures\\Screenshots"
   },
   "screenshots": {

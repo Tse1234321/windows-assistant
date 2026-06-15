@@ -151,6 +151,7 @@ function registerIpc() {
     try {
       const config = loadConfig();
       const metrics = await systemMonitorService.getMetrics({
+        monitorDrives: config.general && config.general.monitorDrives,
         monitorDrive: config.general && config.general.monitorDrive,
       });
       const unsorted = fileOrganizerService.countUnsorted(
@@ -164,8 +165,11 @@ function registerIpc() {
       const rules = ruleService.evaluate(config, {
         downloadsCount: unsorted.count,
         ramPercent: metrics.memory.usagePercent,
-        diskFreePercent: metrics.disk.freePercent,
-        diskOk: metrics.disk.ok,
+        disks: (metrics.disks || []).map((d) => ({
+          drive: d.drive,
+          freePercent: d.freePercent,
+          ok: d.ok,
+        })),
         projects: (git.projects || []).map((p) => ({
           name: p.name,
           hoursSinceCommit: p.hoursSinceCommit,
