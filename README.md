@@ -149,7 +149,7 @@ npm run package:dir   # 輸出到 release/win-unpacked/
 {
   "general": {
     "downloadsPath": "",
-    "monitorDrive": ""
+    "monitorDrives": ["C:\\", "D:\\"]
   },
   "modes": [
     {
@@ -174,7 +174,7 @@ npm run package:dir   # 輸出到 release/win-unpacked/
 可修改的位置：
 
 - `general.downloadsPath`：自訂 Downloads 路徑（留空 → 使用者家目錄下的 `Downloads`）。
-- `general.monitorDrive`：要監控的磁碟（留空 → 系統磁碟，Windows 通常是 `C:\`）。
+- `general.monitorDrives`：要監控的多顆磁碟，例如 `["C:\\", "D:\\"]`；設成空陣列 `[]` 會自動偵測所有可用磁碟。仍相容舊版單一字串 `monitorDrive`（只有在沒有 `monitorDrives` 時才使用）。任一顆磁碟剩餘空間 < 20% 都會扣 Health Score 並在提醒中標明是哪一顆。
 - `modes[]`：每個工作模式的 `apps` / `folders` / `urls` / `commands`。
 - `projects[]`：要追蹤 Git 的專案與提醒時數（也是 Project Hub 與 Command Palette 的來源）。
 - `rules[]`（v1.1）：Smart Rules，每條含 `type`（`downloadsCount` / `ramUsage` / `projectStale` / `diskFree`）、`threshold`、`level`、`enabled`。可在「Smart Rules」頁面用 UI 調整。

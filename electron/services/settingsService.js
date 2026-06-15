@@ -16,7 +16,8 @@ const { app } = require('electron');
 const DEFAULT_SETTINGS = {
   general: {
     downloadsPath: '',
-    monitorDrive: '',
+    monitorDrives: [],
+    monitorDrive: '', // legacy single-drive field (kept for backward compatibility)
     screenshotsPath: '',
   },
   modes: [],

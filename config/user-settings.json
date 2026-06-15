@@ -1,7 +1,7 @@
 {
   "general": {
     "downloadsPath": "",
-    "monitorDrive": "",
+    "monitorDrives": ["C:\\"],
     "screenshotsPath": ""
   },
   "screenshots": {
