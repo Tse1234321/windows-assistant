@@ -1,11 +1,11 @@
 {
   "general": {
-    "downloadsPath": "",
-    "monitorDrive": "",
-    "screenshotsPath": ""
+    "downloadsPath": "D:\\我的資料庫\\Downloads",
+    "monitorDrive": "C:\\",
+    "screenshotsPath": "D:\\我的資料庫\\Pictures\\Screenshots"
   },
   "screenshots": {
-    "path": "",
+    "path": "D:\\我的資料庫\\Pictures\\Screenshots",
     "keywords": {}
   },
   "rules": [
