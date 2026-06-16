@@ -3,7 +3,8 @@
     "downloadsPath": "D:\\我的資料庫\\Downloads",
     "monitorDrives": ["C:\\", "D:\\"],
     "screenshotsPath": "D:\\我的資料庫\\Pictures\\Screenshots",
-    "vscodePath": "C:\\Users\\Jeremy\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
+    "vscodePath": "C:\\Users\\Jeremy\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+    "autoLaunch": true
   },
   "screenshots": {
     "path": "D:\\我的資料庫\\Pictures\\Screenshots",
@@ -33,7 +34,7 @@
       ],
       "commands": [
         {
-         "cwd": "D:\\我的資料庫\\Desktop\\windows assistant\\windows-assistant",
+          "cwd": "D:\\我的資料庫\\Desktop\\windows assistant\\windows-assistant",
           "command": "npm run dev"
         }
       ]

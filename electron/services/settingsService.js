@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS = {
     monitorDrive: '', // legacy single-drive field (kept for backward compatibility)
     screenshotsPath: '',
     vscodePath: '',
+    autoLaunch: true,
   },
   modes: [],
   projects: [],

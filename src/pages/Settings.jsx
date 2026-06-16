@@ -30,6 +30,11 @@ export default function Settings() {
   const [downloadsMsg, setDownloadsMsg] = useState(null);
   const [detectingDl, setDetectingDl] = useState(false);
 
+  // Start at login
+  const [autoLaunch, setAutoLaunch] = useState(true);
+  const [autoLaunchSupported, setAutoLaunchSupported] = useState(true);
+  const [autoLaunchMsg, setAutoLaunchMsg] = useState(null);
+
   const load = async () => {
     if (!window.api) {
       setToast({ type: 'error', msg: '無法連接 Electron 主程序。' });
@@ -43,6 +48,12 @@ export default function Settings() {
     setDownloadsPath((res.settings.general && res.settings.general.downloadsPath) || '');
     if (!res.ok) setToast({ type: 'error', msg: res.error });
     setLoading(false);
+    // Load current start-at-login state.
+    const al = await window.api.getAutoLaunch();
+    if (al && al.ok) {
+      setAutoLaunch(al.enabled);
+      setAutoLaunchSupported(al.supported);
+    }
   };
 
   useEffect(() => {
@@ -119,6 +130,24 @@ export default function Settings() {
         ? { type: 'ok', msg: `已開啟 VS Code：${r.path}` }
         : { type: 'error', msg: r.error || '測試失敗' }
     );
+  };
+
+  const toggleAutoLaunch = async (value) => {
+    setAutoLaunch(value); // optimistic
+    const r = await window.api.setAutoLaunch(value);
+    if (!r.ok) {
+      setAutoLaunch(!value); // revert on failure
+      setAutoLaunchMsg({ type: 'error', msg: r.error || '設定失敗' });
+      return;
+    }
+    setAutoLaunchMsg({
+      type: 'ok',
+      msg: r.supported
+        ? value
+          ? '已開啟:開機時自動啟動並縮到系統匣。'
+          : '已關閉開機自動啟動。'
+        : '已記錄偏好（開機自動啟動僅在「安裝版」生效，開發模式不會註冊）。',
+    });
   };
 
   // --- Downloads folder ---
@@ -200,6 +229,25 @@ export default function Settings() {
           </ActionButton>
         </div>
         <div className="path">{configPath || '—'}</div>
+      </div>
+
+      {/* 開機自動啟動 */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="section-title">開機自動啟動</div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={autoLaunch}
+            onChange={(e) => toggleAutoLaunch(e.target.checked)}
+          />
+          <span>Windows 開機時自動啟動，並靜默縮到右下角系統匣（點 tray 才顯示視窗）。</span>
+        </label>
+        {!autoLaunchSupported ? (
+          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+            註:此設定只在<strong>安裝版</strong>生效；開發模式（npm run dev）不會註冊開機啟動。
+          </p>
+        ) : null}
+        {autoLaunchMsg ? <div className={`toast ${autoLaunchMsg.type}`}>{autoLaunchMsg.msg}</div> : null}
       </div>
 
       {/* VS Code 路徑 */}

@@ -52,6 +52,10 @@ contextBridge.exposeInMainWorld('api', {
   pickPath: (opts) => ipcRenderer.invoke('dialog:pickPath', opts),
   pathInfo: (p) => ipcRenderer.invoke('fs:pathInfo', p),
 
+  // Start at login
+  getAutoLaunch: () => ipcRenderer.invoke('autolaunch:get'),
+  setAutoLaunch: (value) => ipcRenderer.invoke('autolaunch:set', value),
+
   // Misc
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   minimizeToTray: () => ipcRenderer.invoke('app:minimizeToTray'),

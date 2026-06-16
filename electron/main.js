@@ -29,21 +29,34 @@ if (!gotLock) {
   app.quit();
 }
 
-// Register/refresh "start at login" so Windows launches us minimised to tray.
-// Only meaningful for the packaged app — we don't want to register the dev
-// Electron binary into the user's startup.
-function configureAutoLaunch() {
-  if (process.platform !== 'win32' || !app.isPackaged) return;
+// "Start at login" is only meaningful for the packaged app — we don't want to
+// register the dev Electron binary into the user's startup.
+function autoLaunchSupported() {
+  return process.platform === 'win32' && app.isPackaged;
+}
+
+// Apply the desired start-at-login state to the OS (launches hidden to tray).
+function applyAutoLaunch(enabled) {
+  if (!autoLaunchSupported()) return { supported: false };
   try {
     app.setLoginItemSettings({
-      openAtLogin: true,
-      enabled: true,
+      openAtLogin: !!enabled,
+      enabled: !!enabled,
       path: process.execPath,
       args: ['--hidden'],
     });
+    return { supported: true };
   } catch (err) {
     console.error('[main] setLoginItemSettings failed:', err);
+    return { supported: true, error: err.message };
   }
+}
+
+// Sync the OS state with the user's saved preference (default: on) at startup.
+function configureAutoLaunch() {
+  const config = loadConfig();
+  const enabled = !(config.general && config.general.autoLaunch === false);
+  applyAutoLaunch(enabled);
 }
 
 function getTrayIconPath() {
@@ -353,6 +366,28 @@ function registerIpc() {
   ipcMain.handle('app:minimizeToTray', async () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
     return { ok: true };
+  });
+
+  // --- Start at login (toggle) ---
+  ipcMain.handle('autolaunch:get', async () => {
+    const config = loadConfig();
+    const enabled = !(config.general && config.general.autoLaunch === false);
+    const supported = autoLaunchSupported();
+    let openAtLogin = enabled;
+    try {
+      if (supported) openAtLogin = app.getLoginItemSettings().openAtLogin;
+    } catch (_) {
+      /* ignore */
+    }
+    return { ok: true, enabled, supported, openAtLogin };
+  });
+
+  ipcMain.handle('autolaunch:set', async (_event, value) => {
+    const res = settingsService.getSettings();
+    const next = { ...res.settings, general: { ...(res.settings.general || {}), autoLaunch: !!value } };
+    const saved = settingsService.saveSettings(next);
+    const applied = applyAutoLaunch(!!value);
+    return { ok: saved.ok, error: saved.error, supported: applied.supported, enabled: !!value };
   });
 
   // --- Project Hub ---
