@@ -16,6 +16,9 @@ const screenshotService = require('./services/screenshotService');
 
 const isDev = !app.isPackaged;
 
+// True when the app was launched by Windows at login (we pass --hidden then).
+const startedHidden = process.argv.includes('--hidden');
+
 let mainWindow = null;
 let tray = null;
 app.isQuitting = false;
@@ -24,6 +27,23 @@ app.isQuitting = false;
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
+}
+
+// Register/refresh "start at login" so Windows launches us minimised to tray.
+// Only meaningful for the packaged app — we don't want to register the dev
+// Electron binary into the user's startup.
+function configureAutoLaunch() {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      enabled: true,
+      path: process.execPath,
+      args: ['--hidden'],
+    });
+  } catch (err) {
+    console.error('[main] setLoginItemSettings failed:', err);
+  }
 }
 
 function getTrayIconPath() {
@@ -41,10 +61,12 @@ function loadConfig() {
   return res.settings || settingsService.DEFAULT_SETTINGS;
 }
 
-function createWindow() {
+function createWindow(showOnReady = true) {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.show();
-    mainWindow.focus();
+    if (showOnReady) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
     return mainWindow;
   }
 
@@ -74,7 +96,8 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+    // When launched at login (--hidden) we stay in the tray and don't pop the window.
+    if (showOnReady) mainWindow.show();
   });
 
   // Close button minimises to the system tray instead of quitting.
@@ -397,8 +420,11 @@ function openCommandPalette() {
 }
 
 app.whenReady().then(() => {
+  configureAutoLaunch();
   registerIpc();
-  createWindow();
+  // Auto-started at login → create the window hidden (tray only). Manual launch
+  // → show the window normally. Clicking the tray icon reveals it either way.
+  createWindow(!startedHidden);
   createTray();
 
   // Global shortcut: Ctrl+Shift+P opens the Command Palette (works even unfocused).
