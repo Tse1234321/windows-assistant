@@ -260,10 +260,34 @@ function isDevServerCommand(text) {
   return /(^|\s)(npm|pnpm|yarn)\s+(run\s+)?dev(\s|$)/i.test(text || '');
 }
 
-/** Infer the dev-server port from the command (e.g. "--port 3000"), else default 5173. */
-function devServerPort(commandText) {
+/** Port explicitly given on the command line (e.g. "--port 3000" / "-p 3000"), else null. */
+function portFromCommand(commandText) {
   const m = (commandText || '').match(/(?:--port|-p)[ =](\d{2,5})/i);
-  return m ? parseInt(m[1], 10) : DEFAULT_DEV_PORT;
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/** Best-effort: read `server.port` from a vite config in the command's cwd. */
+function portFromViteConfig(cwd) {
+  if (!cwd) return null;
+  const names = ['vite.config.js', 'vite.config.mjs', 'vite.config.ts', 'vite.config.cjs'];
+  for (const name of names) {
+    try {
+      const fp = path.join(cwd, name);
+      if (fs.existsSync(fp)) {
+        const txt = fs.readFileSync(fp, 'utf-8');
+        const m = txt.match(/port\s*:\s*(\d{2,5})/);
+        if (m) return parseInt(m[1], 10);
+      }
+    } catch (_) {
+      /* ignore unreadable config */
+    }
+  }
+  return null;
+}
+
+/** Resolve the dev-server port: explicit command flag > vite.config > default 5173. */
+function devServerPort(commandText, cwd) {
+  return portFromCommand(commandText) || portFromViteConfig(cwd) || DEFAULT_DEV_PORT;
 }
 
 /** Probe http://127.0.0.1:<port>/; returns whether it is reachable and whether it is OUR app. */
@@ -299,7 +323,7 @@ async function runCommand(cmd, steps, options = {}) {
 
   // Avoid double-starting the dev server (port conflict / multiple instances).
   if (isDevServerCommand(commandText)) {
-    const port = devServerPort(commandText);
+    const port = devServerPort(commandText, cwd);
     const probe = await probeLocalServer(port);
     if (probe.reachable) {
       let decision = 'skip';

@@ -262,6 +262,37 @@ function registerIpc() {
       : { ok: false, path: det.path, error: launch.error || '啟動失敗' };
   });
 
+  // Generic file/folder picker used by the Mode editor.
+  ipcMain.handle('dialog:pickPath', async (_event, opts = {}) => {
+    try {
+      const isFolder = opts.type === 'folder';
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: opts.title || (isFolder ? '選擇資料夾' : '選擇檔案'),
+        properties: [isFolder ? 'openDirectory' : 'openFile'],
+        filters: isFolder
+          ? undefined
+          : opts.filters || [{ name: '所有檔案', extensions: ['*'] }],
+      });
+      if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+        return { ok: false, canceled: true };
+      }
+      return { ok: true, path: result.filePaths[0] };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // Lightweight path existence check for live validation in the UI.
+  ipcMain.handle('fs:pathInfo', async (_event, targetPath) => {
+    try {
+      if (!targetPath || !targetPath.trim()) return { exists: false, isFile: false, isDir: false };
+      const stat = fs.statSync(targetPath);
+      return { exists: true, isFile: stat.isFile(), isDir: stat.isDirectory() };
+    } catch (_) {
+      return { exists: false, isFile: false, isDir: false };
+    }
+  });
+
   ipcMain.handle('dialog:pickVSCode', async () => {
     try {
       const result = await dialog.showOpenDialog(mainWindow, {
