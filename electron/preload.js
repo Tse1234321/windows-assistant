@@ -42,6 +42,15 @@ contextBridge.exposeInMainWorld('api', {
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   openSettingsFile: () => ipcRenderer.invoke('settings:openFile'),
 
+  // VS Code path
+  detectVSCode: () => ipcRenderer.invoke('vscode:detect'),
+  pickVSCodeFile: () => ipcRenderer.invoke('dialog:pickVSCode'),
+  testVSCode: () => ipcRenderer.invoke('vscode:test'),
+
+  // Generic pickers / validation (used by the Mode editor)
+  pickPath: (opts) => ipcRenderer.invoke('dialog:pickPath', opts),
+  pathInfo: (p) => ipcRenderer.invoke('fs:pathInfo', p),
+
   // Misc
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   minimizeToTray: () => ipcRenderer.invoke('app:minimizeToTray'),

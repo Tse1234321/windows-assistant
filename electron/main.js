@@ -2,7 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage, globalShortcut, dialog } = require('electron');
 
 const settingsService = require('./services/settingsService');
 const systemMonitorService = require('./services/systemMonitorService');
@@ -195,7 +195,25 @@ function registerIpc() {
 
   ipcMain.handle('mode:run', async (_event, modeName) => {
     const config = loadConfig();
-    return modeService.runMode(config, modeName);
+    return modeService.runMode(config, modeName, {
+      // Let the user decide when a dev server is already running on the port.
+      onDevServerRunning: async ({ port, isOwn, command }) => {
+        const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+        const { response } = await dialog.showMessageBox(parent, {
+          type: 'question',
+          buttons: ['略過（建議）', '仍要新開'],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+          title: '開發伺服器已在執行',
+          message: isOwn
+            ? `localhost:${port} 已在執行（本專案）。`
+            : `localhost:${port} 已被其他程式佔用（不是本專案）。`,
+          detail: `指令：${command}\n要略過，還是仍要強制再開一個？`,
+        });
+        return response === 1 ? 'launch' : 'skip';
+      },
+    });
   });
 
   ipcMain.handle('files:scan', async () => {
@@ -223,6 +241,72 @@ function registerIpc() {
     try {
       await shell.openPath(res.path);
       return { ok: true, path: res.path };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // --- VS Code detection / file picker ---
+  ipcMain.handle('vscode:detect', async () => {
+    const config = loadConfig();
+    return modeService.detectVSCode(config.general && config.general.vscodePath);
+  });
+
+  ipcMain.handle('vscode:test', async () => {
+    const config = loadConfig();
+    const det = await modeService.detectVSCode(config.general && config.general.vscodePath);
+    if (!det.ok) return { ok: false, error: det.error };
+    const launch = await modeService.launchExecutable(det.path);
+    return launch.ok
+      ? { ok: true, path: det.path }
+      : { ok: false, path: det.path, error: launch.error || '啟動失敗' };
+  });
+
+  // Generic file/folder picker used by the Mode editor.
+  ipcMain.handle('dialog:pickPath', async (_event, opts = {}) => {
+    try {
+      const isFolder = opts.type === 'folder';
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: opts.title || (isFolder ? '選擇資料夾' : '選擇檔案'),
+        properties: [isFolder ? 'openDirectory' : 'openFile'],
+        filters: isFolder
+          ? undefined
+          : opts.filters || [{ name: '所有檔案', extensions: ['*'] }],
+      });
+      if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+        return { ok: false, canceled: true };
+      }
+      return { ok: true, path: result.filePaths[0] };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // Lightweight path existence check for live validation in the UI.
+  ipcMain.handle('fs:pathInfo', async (_event, targetPath) => {
+    try {
+      if (!targetPath || !targetPath.trim()) return { exists: false, isFile: false, isDir: false };
+      const stat = fs.statSync(targetPath);
+      return { exists: true, isFile: stat.isFile(), isDir: stat.isDirectory() };
+    } catch (_) {
+      return { exists: false, isFile: false, isDir: false };
+    }
+  });
+
+  ipcMain.handle('dialog:pickVSCode', async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: '選擇 VS Code 執行檔 (Code.exe)',
+        properties: ['openFile'],
+        filters: [
+          { name: 'VS Code', extensions: ['exe', 'cmd'] },
+          { name: '所有檔案', extensions: ['*'] },
+        ],
+      });
+      if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+        return { ok: false, canceled: true };
+      }
+      return { ok: true, path: result.filePaths[0] };
     } catch (err) {
       return { ok: false, error: err.message };
     }
