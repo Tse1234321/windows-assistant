@@ -16,6 +16,9 @@ const screenshotService = require('./services/screenshotService');
 
 const isDev = !app.isPackaged;
 
+// True when the app was launched by Windows at login (we pass --hidden then).
+const startedHidden = process.argv.includes('--hidden');
+
 let mainWindow = null;
 let tray = null;
 app.isQuitting = false;
@@ -24,6 +27,36 @@ app.isQuitting = false;
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
+}
+
+// "Start at login" is only meaningful for the packaged app — we don't want to
+// register the dev Electron binary into the user's startup.
+function autoLaunchSupported() {
+  return process.platform === 'win32' && app.isPackaged;
+}
+
+// Apply the desired start-at-login state to the OS (launches hidden to tray).
+function applyAutoLaunch(enabled) {
+  if (!autoLaunchSupported()) return { supported: false };
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!enabled,
+      enabled: !!enabled,
+      path: process.execPath,
+      args: ['--hidden'],
+    });
+    return { supported: true };
+  } catch (err) {
+    console.error('[main] setLoginItemSettings failed:', err);
+    return { supported: true, error: err.message };
+  }
+}
+
+// Sync the OS state with the user's saved preference (default: on) at startup.
+function configureAutoLaunch() {
+  const config = loadConfig();
+  const enabled = !(config.general && config.general.autoLaunch === false);
+  applyAutoLaunch(enabled);
 }
 
 function getTrayIconPath() {
@@ -41,10 +74,12 @@ function loadConfig() {
   return res.settings || settingsService.DEFAULT_SETTINGS;
 }
 
-function createWindow() {
+function createWindow(showOnReady = true) {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.show();
-    mainWindow.focus();
+    if (showOnReady) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
     return mainWindow;
   }
 
@@ -74,7 +109,8 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+    // When launched at login (--hidden) we stay in the tray and don't pop the window.
+    if (showOnReady) mainWindow.show();
   });
 
   // Close button minimises to the system tray instead of quitting.
@@ -332,6 +368,28 @@ function registerIpc() {
     return { ok: true };
   });
 
+  // --- Start at login (toggle) ---
+  ipcMain.handle('autolaunch:get', async () => {
+    const config = loadConfig();
+    const enabled = !(config.general && config.general.autoLaunch === false);
+    const supported = autoLaunchSupported();
+    let openAtLogin = enabled;
+    try {
+      if (supported) openAtLogin = app.getLoginItemSettings().openAtLogin;
+    } catch (_) {
+      /* ignore */
+    }
+    return { ok: true, enabled, supported, openAtLogin };
+  });
+
+  ipcMain.handle('autolaunch:set', async (_event, value) => {
+    const res = settingsService.getSettings();
+    const next = { ...res.settings, general: { ...(res.settings.general || {}), autoLaunch: !!value } };
+    const saved = settingsService.saveSettings(next);
+    const applied = applyAutoLaunch(!!value);
+    return { ok: saved.ok, error: saved.error, supported: applied.supported, enabled: !!value };
+  });
+
   // --- Project Hub ---
   ipcMain.handle('project:list', async () => {
     const config = loadConfig();
@@ -397,8 +455,11 @@ function openCommandPalette() {
 }
 
 app.whenReady().then(() => {
+  configureAutoLaunch();
   registerIpc();
-  createWindow();
+  // Auto-started at login → create the window hidden (tray only). Manual launch
+  // → show the window normally. Clicking the tray icon reveals it either way.
+  createWindow(!startedHidden);
   createTray();
 
   // Global shortcut: Ctrl+Shift+P opens the Command Palette (works even unfocused).
