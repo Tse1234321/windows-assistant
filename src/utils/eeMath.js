@@ -29,7 +29,10 @@ export function formatEng(value, unit = '', sig = 4) {
 export function parseEng(input) {
   if (typeof input === 'number') return input;
   if (input == null) return NaN;
-  const s = String(input).trim().replace(/Ω|ohm[s]?|F|H|A|V|W/gi, '').trim();
+  const raw = String(input).trim();
+  if (raw === '') return NaN; // empty field is "not provided", not zero
+  const s = raw.replace(/Ω|ohm[s]?|F|H|A|V|W/gi, '').trim();
+  if (s === '') return NaN;
   const m = s.match(/^(-?\d*\.?\d+)\s*(meg|[tgmkµunp])?$/i);
   if (!m) return Number(s);
   const base = parseFloat(m[1]);
