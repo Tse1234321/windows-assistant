@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import ActionButton from '../components/ActionButton.jsx';
+import React, { useEffect, useMemo, useState } from 'react';
+import Button from '../components/Button.jsx';
+import Card from '../components/Card.jsx';
 import Dialog from '../components/Dialog.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast } from '../components/Toast.jsx';
 
 export default function FileOrganizer() {
@@ -20,160 +22,234 @@ export default function FileOrganizer() {
   useEffect(() => {
     (async () => {
       if (!window.api) return;
-      const res = await window.api.getSettings();
-      setAskBefore(!(res.settings.general && res.settings.general.askBeforeOrganizing === false));
+      const result = await window.api.getSettings();
+      setAskBefore(!(result.settings.general && result.settings.general.askBeforeOrganizing === false));
     })();
   }, []);
 
+  const categoryRows = useMemo(() => Object.entries(scan?.byCategory || {}), [scan]);
+
+  const persistDownloadsPath = async (folder) => {
+    const result = await window.api.getSettings();
+    await window.api.saveSettings({
+      ...result.settings,
+      general: { ...(result.settings.general || {}), downloadsPath: folder },
+    });
+  };
+
   const doScan = async () => {
-    if (!window.api) { setError('無法連接 Electron 主程序。'); return; }
+    if (!window.api) {
+      setError('Electron API 尚未就緒，請在桌面 App 內使用。');
+      return;
+    }
+
     setScanning(true);
     setMoveResult(null);
     setError('');
-    const res = await window.api.scanDownloads();
-    if (!res.ok) { setError(res.error || '掃描失敗'); setScan(null); }
-    else setScan(res);
+    const result = await window.api.scanDownloads();
+    if (result.ok) {
+      setScan(result);
+    } else {
+      setScan(null);
+      setError(result.error || '掃描 Downloads 失敗');
+    }
     setScanning(false);
-  };
-
-  const persistDownloadsPath = async (p) => {
-    const res = await window.api.getSettings();
-    await window.api.saveSettings({ ...res.settings, general: { ...(res.settings.general || {}), downloadsPath: p } });
   };
 
   const autoDetect = async () => {
     setDetecting(true);
     setError('');
-    const r = await window.api.detectDownloads();
+    const result = await window.api.detectDownloads();
     setDetecting(false);
-    if (r.ok) { await persistDownloadsPath(r.path); toast(`已偵測：${r.path}`, 'ok'); await doScan(); }
-    else setError(r.error || '自動偵測失敗，請改用「選擇資料夾」。');
+    if (result.ok) {
+      await persistDownloadsPath(result.path);
+      toast(`已設定 Downloads: ${result.path}`, 'ok');
+      await doScan();
+    } else {
+      setError(result.error || '找不到 Downloads 資料夾');
+    }
   };
 
   const pickFolder = async () => {
     setError('');
-    const r = await window.api.pickPath({ type: 'folder', title: '選擇 Downloads 資料夾' });
-    if (r.canceled) return;
-    if (r.ok) { await persistDownloadsPath(r.path); toast(`已設定：${r.path}`, 'ok'); await doScan(); }
-    else setError(r.error || '選擇資料夾失敗');
+    const result = await window.api.pickPath({ type: 'folder', title: '選擇 Downloads 資料夾' });
+    if (result.canceled) return;
+    if (result.ok) {
+      await persistDownloadsPath(result.path);
+      toast(`已更新資料夾: ${result.path}`, 'ok');
+      await doScan();
+    } else {
+      setError(result.error || '選擇資料夾失敗');
+    }
   };
 
   const openFolder = async () => {
-    const r = await window.api.openDownloadsFolder();
-    if (!r.ok) toast(r.error || '開啟失敗', 'error');
+    const result = await window.api.openDownloadsFolder();
+    if (!result.ok) toast(result.error || '無法開啟資料夾', 'error');
   };
 
   const performOrganize = async () => {
     setConfirmOpen(false);
-    if (!scan || !scan.items || scan.items.length === 0) return;
+    if (!scan?.items?.length) return;
+
     setOrganizing(true);
-    const res = await window.api.organizeFiles(scan.items);
-    setMoveResult(res);
-    setCanUndo(res.moved > 0);
+    const result = await window.api.organizeFiles(scan.items);
+    setMoveResult(result);
+    setCanUndo(result.moved > 0);
     setOrganizing(false);
-    toast(`整理完成：成功 ${res.moved}、失敗 ${res.failed}`, res.failed === 0 ? 'ok' : 'warn');
+    toast(`整理完成：成功 ${result.moved}，失敗 ${result.failed}`, result.failed === 0 ? 'ok' : 'warn');
+
     const fresh = await window.api.scanDownloads();
     if (fresh.ok) setScan(fresh);
   };
 
   const onOrganizeClick = () => {
-    if (!scan || !scan.items || scan.items.length === 0) return;
+    if (!scan?.items?.length) return;
     if (askBefore) setConfirmOpen(true);
     else performOrganize();
   };
 
   const doUndo = async () => {
     setUndoing(true);
-    const r = await window.api.undoOrganize();
+    const result = await window.api.undoOrganize();
     setUndoing(false);
-    if (r.ok) { toast(`已復原 ${r.restored} 個檔案`, 'ok'); setCanUndo(false); await doScan(); }
-    else toast(r.error || '復原失敗', 'error');
+    if (result.ok) {
+      toast(`已還原 ${result.restored} 個檔案`, 'ok');
+      setCanUndo(false);
+      await doScan();
+    } else {
+      toast(result.error || '還原失敗', 'error');
+    }
   };
 
   return (
     <div>
-      <h1 className="page-title">Downloads 整理</h1>
-      <p className="page-subtitle">
-        先預覽，確認後才會移動檔案。<strong>不會刪除任何檔案</strong>，重名自動加編號，並可復原上一次整理。
-      </p>
-
-      {error ? <div className="error-banner">⚠️ {error}</div> : null}
-
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div className="muted" style={{ fontSize: 13 }}>
-          目前要整理的資料夾：
-          <span className="path">{scan ? scan.downloadsPath : '（按「掃描」或「自動偵測」）'}</span>
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">FILES</p>
+          <h1 className="page-title">檔案整理</h1>
+          <p className="page-subtitle">
+            掃描 Downloads，依檔案類型與分類規則移動到對應資料夾，並保留一次還原機會。
+          </p>
         </div>
-        <div className="button-row" style={{ marginTop: 10, marginBottom: 0 }}>
-          <ActionButton icon="🧭" busy={detecting} onClick={autoDetect}>自動偵測路徑</ActionButton>
-          <ActionButton icon="📁" onClick={pickFolder}>選擇資料夾</ActionButton>
-          <ActionButton icon="📂" onClick={openFolder}>開啟資料夾</ActionButton>
+        <div className="head-actions">
+          <StatusBadge tone={scan?.items?.length ? 'warn' : 'muted'}>
+            {scan ? `${scan.items.length} 個待整理` : '尚未掃描'}
+          </StatusBadge>
+          <Button variant="primary" icon="SC" busy={scanning} onClick={doScan}>
+            掃描
+          </Button>
         </div>
       </div>
 
-      <div className="button-row">
-        <ActionButton variant="primary" icon="🔍" busy={scanning} onClick={doScan}>掃描 Downloads</ActionButton>
-        <ActionButton icon="📦" busy={organizing} disabled={!scan || !scan.items || scan.items.length === 0} onClick={onOrganizeClick}>
-          確認並整理 {scan && scan.items ? `(${scan.items.length})` : ''}
-        </ActionButton>
-        <ActionButton icon="↩️" busy={undoing} disabled={!canUndo} onClick={doUndo}>復原上一次整理</ActionButton>
+      {error ? <div className="error-banner">{error}</div> : null}
+
+      <Card className="control-panel">
+        <div>
+          <div className="panel-label">目前資料夾</div>
+          <div className="path">{scan?.downloadsPath || '尚未掃描'}</div>
+        </div>
+        <div className="head-actions">
+          <Button size="sm" icon="AU" busy={detecting} onClick={autoDetect}>
+            自動偵測
+          </Button>
+          <Button size="sm" icon="PK" onClick={pickFolder}>
+            選擇
+          </Button>
+          <Button size="sm" icon="OP" onClick={openFolder}>
+            開啟
+          </Button>
+        </div>
+      </Card>
+
+      <div className="head-actions" style={{ justifyContent: 'flex-start', marginBottom: 16 }}>
+        <Button
+          variant="primary"
+          icon="MV"
+          busy={organizing}
+          disabled={!scan?.items?.length}
+          onClick={onOrganizeClick}
+        >
+          整理檔案 {scan?.items?.length ? `(${scan.items.length})` : ''}
+        </Button>
+        <Button icon="UN" busy={undoing} disabled={!canUndo} onClick={doUndo}>
+          還原上次整理
+        </Button>
       </div>
 
       {scan ? (
-        <div className="card" style={{ marginBottom: 22 }}>
-          <div className="row-between">
-            <div className="section-title">預覽（共 {scan.totalFiles} 個檔案）</div>
-            <span className="muted path">{scan.downloadsPath}</span>
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            {Object.entries(scan.byCategory).map(([cat, n]) => (
-              <span className="tag" key={cat} style={{ marginRight: 6 }}>{cat}: {n}</span>
-            ))}
-          </div>
+        <Card title={`掃描結果：${scan.totalFiles} 個檔案`} icon="SC" style={{ marginBottom: 16 }}>
+          {categoryRows.length ? (
+            <div className="chip-row">
+              {categoryRows.map(([category, count]) => (
+                <span className="tag" key={category}>
+                  {category}: {count}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
           {scan.items.length === 0 ? (
-            <EmptyState icon="✨" title="沒有需要整理的檔案" description="Downloads 根目錄是乾淨的。" />
+            <EmptyState title="沒有需要整理的檔案" description="Downloads 目前看起來很乾淨。" />
           ) : (
             <table className="table">
-              <thead><tr><th>檔案</th><th>副檔名</th><th>分類到</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>檔名</th>
+                  <th>副檔名</th>
+                  <th>分類</th>
+                </tr>
+              </thead>
               <tbody>
-                {scan.items.map((item, i) => (
-                  <tr key={i}>
+                {scan.items.map((item, index) => (
+                  <tr key={`${item.name}-${index}`}>
                     <td>{item.name}</td>
-                    <td><span className="tag">{item.ext}</span></td>
-                    <td className="muted">→ {item.category}/</td>
+                    <td>
+                      <span className="tag">{item.ext}</span>
+                    </td>
+                    <td className="muted">{item.category}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-        </div>
+        </Card>
       ) : null}
 
       {moveResult ? (
-        <div className="card">
-          <div className="row-between">
-            <div className="section-title">整理結果</div>
-            <span className={`badge ${moveResult.failed === 0 ? 'ok' : 'warn'}`}>成功 {moveResult.moved} · 失敗 {moveResult.failed}</span>
+        <Card title="整理結果" icon="RS">
+          <div className="result-strip">
+            <StatusBadge tone={moveResult.failed === 0 ? 'ok' : 'warn'}>
+              成功 {moveResult.moved}，失敗 {moveResult.failed}
+            </StatusBadge>
           </div>
           <table className="table">
-            <thead><tr><th>檔案</th><th>結果</th><th>位置 / 錯誤</th></tr></thead>
+            <thead>
+              <tr>
+                <th>檔名</th>
+                <th>狀態</th>
+                <th>目的地 / 錯誤</th>
+              </tr>
+            </thead>
             <tbody>
-              {moveResult.results.map((r, i) => (
-                <tr key={i}>
-                  <td>{r.name}</td>
-                  <td className={r.status === 'moved' ? 'status-ok' : 'status-error'}>{r.status === 'moved' ? '✅ 已移動' : '❌ 失敗'}</td>
-                  <td className="path">{r.status === 'moved' ? r.to : r.error}</td>
+              {(moveResult.results || []).map((row, index) => (
+                <tr key={`${row.name}-${index}`}>
+                  <td>{row.name}</td>
+                  <td className={row.status === 'moved' ? 'status-ok' : 'status-error'}>
+                    {row.status === 'moved' ? '已移動' : '失敗'}
+                  </td>
+                  <td className="path">{row.status === 'moved' ? row.to : row.error}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </Card>
       ) : null}
 
       <Dialog
         open={confirmOpen}
-        title="確認整理"
-        message={`將移動 ${scan && scan.items ? scan.items.length : 0} 個檔案到分類子資料夾（不會刪除，重名會加編號）。要繼續嗎？`}
+        title="整理檔案"
+        message={`即將整理 ${scan?.items?.length || 0} 個檔案，檔案會移動到分類資料夾。`}
         confirmLabel="開始整理"
         onConfirm={performOrganize}
         onCancel={() => setConfirmOpen(false)}

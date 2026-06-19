@@ -5,69 +5,90 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const { spawn, execFile } = require('child_process');
-const { shell, app } = require('electron');
 
-/**
- * Quick Mode launcher service.
- *
- * Runs a configured "mode": opens apps, opens folders, opens URLs, and runs
- * shell commands. Every step is independent — one failure never stops the rest,
- * and a bad/missing path produces a friendly error instead of crashing.
- */
+let electronShell = null;
+let electronApp = null;
+try {
+  const electron = require('electron');
+  electronShell = electron && electron.shell ? electron.shell : null;
+  electronApp = electron && electron.app ? electron.app : null;
+} catch (_) {
+  // Keep this service importable in Node-based smoke tests.
+}
 
-// The app's own Vite dev server. Opening it in an external browser just shows
-// the UI without the Electron preload bridge ("無法連接 Electron 主程序"), so in
-// development we skip it instead of launching Edge/Chrome.
 const DEV_SERVER_HOSTS = new Set(['localhost', '127.0.0.1']);
 const DEV_SERVER_PORT = '5173';
 const DEFAULT_DEV_PORT = 5173;
+const VSCODE_REL = path.join('AppData', 'Local', 'Programs', 'Microsoft VS Code', 'Code.exe');
+const VSCODE_NOT_FOUND = '找不到 VS Code，請到設定選擇 Code.exe 路徑。';
+
+function isPackaged() {
+  return !!(electronApp && electronApp.isPackaged);
+}
+
+function requireShell() {
+  if (!electronShell) throw new Error('Electron shell is unavailable.');
+  return electronShell;
+}
 
 function isOwnDevServerUrl(url) {
   try {
-    const u = new URL(url);
-    return DEV_SERVER_HOSTS.has(u.hostname) && u.port === DEV_SERVER_PORT;
+    const parsed = new URL(url);
+    return DEV_SERVER_HOSTS.has(parsed.hostname) && parsed.port === DEV_SERVER_PORT;
   } catch (_) {
     return false;
   }
 }
 
-// ---------------------------------------------------------------------------
-// VS Code detection
-// ---------------------------------------------------------------------------
-const VSCODE_NOT_FOUND = '找不到 VS Code，請到設定頁面指定 Code.exe 路徑。';
-const VSCODE_REL = path.join('AppData', 'Local', 'Programs', 'Microsoft VS Code', 'Code.exe');
-
-// Cross-separator basename so Windows-style paths are handled even on macOS/Linux.
-function baseName(p) {
-  const s = String(p || '');
-  const idx = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
-  return idx >= 0 ? s.slice(idx + 1) : s;
+function baseName(value) {
+  const text = String(value || '');
+  const index = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'));
+  return index >= 0 ? text.slice(index + 1) : text;
 }
 
-function isVSCodePath(p) {
-  if (!p) return false;
-  const base = baseName(p).toLowerCase();
-  return (
-    base === 'code.exe' ||
-    base === 'code.cmd' ||
-    base === 'code' ||
-    /microsoft vs code/i.test(p)
-  );
+function isVSCodePath(value) {
+  if (!value) return false;
+  const base = baseName(value).toLowerCase();
+  return base === 'code.exe' || base === 'code.cmd' || base === 'code' || /microsoft vs code/i.test(value);
+}
+
+function deriveAppName(value) {
+  if (isVSCodePath(value)) return 'VS Code';
+  if (!value) return '(未命名)';
+  const base = baseName(value);
+  return base.replace(/\.[^.]+$/, '') || base;
+}
+
+function normalizeApp(entry) {
+  if (typeof entry === 'string') return { path: entry, name: deriveAppName(entry), icon: '', workspaceFolder: '' };
+  if (entry && typeof entry === 'object') {
+    const appPath = entry.path || '';
+    return {
+      path: appPath,
+      name: entry.name || deriveAppName(appPath),
+      icon: entry.icon || '',
+      workspaceFolder: entry.workspaceFolder || '',
+    };
+  }
+  return { path: '', name: '(empty)', icon: '', workspaceFolder: '' };
+}
+
+function appLabel(appObj) {
+  return `${appObj.icon ? `${appObj.icon} ` : ''}${appObj.name || deriveAppName(appObj.path)}`.trim();
 }
 
 function whichCode() {
-  // Resolves VS Code's CLI launcher (code.cmd / code) from PATH.
   return new Promise((resolve) => {
     const finder = process.platform === 'win32' ? 'where' : 'which';
     execFile(finder, ['code'], { timeout: 5000, windowsHide: true }, (err, stdout) => {
       if (err || !stdout) return resolve(null);
       const lines = stdout
         .split(/\r?\n/)
-        .map((l) => l.trim())
+        .map((line) => line.trim())
         .filter(Boolean);
-      const existing = lines.find((l) => {
+      const existing = lines.find((line) => {
         try {
-          return fs.existsSync(l);
+          return fs.existsSync(line);
         } catch (_) {
           return false;
         }
@@ -77,144 +98,136 @@ function whichCode() {
   });
 }
 
-/**
- * Detect a usable VS Code executable. Paths are built dynamically from the
- * current user's home directory / environment (no hardcoded username).
- * Order: preferred (config) → <home>\AppData\Local\... → %LOCALAPPDATA% →
- *        %USERPROFILE%\AppData\Local\... → Program Files (x64/x86) → `where code`.
- */
 async function detectVSCode(preferred) {
   const candidates = [];
   if (preferred && preferred.trim()) candidates.push(preferred.trim());
   candidates.push(path.join(os.homedir(), VSCODE_REL));
-  if (process.env.LOCALAPPDATA) {
-    candidates.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'Microsoft VS Code', 'Code.exe'));
-  }
-  if (process.env.USERPROFILE) {
-    candidates.push(path.join(process.env.USERPROFILE, VSCODE_REL));
-  }
+  if (process.env.LOCALAPPDATA) candidates.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'Microsoft VS Code', 'Code.exe'));
+  if (process.env.USERPROFILE) candidates.push(path.join(process.env.USERPROFILE, VSCODE_REL));
   candidates.push('C:\\Program Files\\Microsoft VS Code\\Code.exe');
   candidates.push('C:\\Program Files (x86)\\Microsoft VS Code\\Code.exe');
 
   const seen = new Set();
-  for (const c of candidates) {
-    if (!c || seen.has(c)) continue;
-    seen.add(c);
+  for (const candidate of candidates) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
     try {
-      if (fs.existsSync(c)) return { ok: true, path: c };
+      if (fs.existsSync(candidate)) return { ok: true, path: candidate };
     } catch (_) {
-      /* keep trying */
+      // keep trying
     }
   }
 
   const fromPath = await whichCode();
   if (fromPath) return { ok: true, path: fromPath };
-
   return { ok: false, error: VSCODE_NOT_FOUND };
 }
 
-// ---------------------------------------------------------------------------
-// App entry normalization (supports string OR { path, name, icon })
-// ---------------------------------------------------------------------------
-function deriveAppName(p) {
-  if (isVSCodePath(p)) return 'VS Code';
-  if (!p) return '(未命名)';
-  const base = baseName(p);
-  return base.replace(/\.[^.]+$/, '') || base; // strip a trailing extension
-}
-
-function normalizeApp(entry) {
-  if (typeof entry === 'string') {
-    return { path: entry, name: deriveAppName(entry), icon: '' };
-  }
-  if (entry && typeof entry === 'object') {
-    const p = entry.path || '';
-    return { path: p, name: entry.name || deriveAppName(p), icon: entry.icon || '' };
-  }
-  return { path: '', name: '(未命名)', icon: '' };
-}
-
-function appLabel(appObj) {
-  return `${appObj.icon ? appObj.icon + ' ' : ''}${appObj.name}`.trim();
-}
-
-// ---------------------------------------------------------------------------
 function listModes(config) {
   const modes = config && Array.isArray(config.modes) ? config.modes : [];
-  return modes.map((m) => ({
-    name: m.name,
-    apps: m.apps || [],
-    folders: m.folders || [],
-    urls: m.urls || [],
-    commands: m.commands || [],
+  return modes.map((mode) => ({
+    name: mode.name,
+    apps: mode.apps || [],
+    folders: mode.folders || [],
+    urls: mode.urls || [],
+    commands: mode.commands || [],
   }));
 }
 
 function findMode(config, modeName) {
   const modes = listModes(config);
   if (!modeName) return modes[0] || null;
-  return modes.find((m) => m.name === modeName) || null;
+  return modes.find((mode) => mode.name === modeName) || null;
 }
 
-/** Launch an executable; handles both .exe (shell.openPath) and .cmd/CLI (spawn). */
 function launchExecutable(execPath) {
   return new Promise((resolve) => {
     try {
       if (/\.exe$/i.test(execPath)) {
-        shell
+        requireShell()
           .openPath(execPath)
           .then((err) => resolve(err ? { ok: false, error: err } : { ok: true }))
-          .catch((e) => resolve({ ok: false, error: e.message }));
+          .catch((err) => resolve({ ok: false, error: err.message }));
         return;
       }
+
       const child = spawn(`"${execPath}"`, [], {
         shell: true,
         detached: process.platform !== 'win32',
         stdio: 'ignore',
         windowsHide: false,
       });
-      child.on('error', (e) => resolve({ ok: false, error: e.message }));
+      child.on('error', (err) => resolve({ ok: false, error: err.message }));
       setTimeout(() => {
         try {
           child.unref();
         } catch (_) {
-          /* noop */
+          // noop
         }
         resolve({ ok: true });
       }, 400);
-    } catch (e) {
-      resolve({ ok: false, error: e.message });
+    } catch (err) {
+      resolve({ ok: false, error: err.message });
     }
   });
 }
 
 async function openVSCode(appObj, configuredVscode, steps) {
   const label = appObj.name ? appLabel(appObj) : 'VS Code';
-  const det = await detectVSCode(configuredVscode || appObj.path);
-  if (!det.ok) {
-    steps.push({ type: 'app', target: label, status: 'error', message: det.error });
+  const detected = await detectVSCode(configuredVscode || appObj.path);
+  if (!detected.ok) {
+    steps.push({ type: 'app', target: label, status: 'error', message: detected.error });
     return;
   }
-  const launch = await launchExecutable(det.path);
-  if (launch.ok) {
-    steps.push({ type: 'app', target: label, status: 'ok', message: `已開啟 ${det.path}` });
+
+  let launch;
+  if (appObj.workspaceFolder && fs.existsSync(appObj.workspaceFolder)) {
+    launch = await new Promise((resolve) => {
+      try {
+        const child = spawn(detected.path, [appObj.workspaceFolder], {
+          detached: process.platform !== 'win32',
+          stdio: 'ignore',
+          windowsHide: false,
+        });
+        child.on('error', (err) => resolve({ ok: false, error: err.message }));
+        setTimeout(() => {
+          try {
+            child.unref();
+          } catch (_) {
+            // noop
+          }
+          resolve({ ok: true });
+        }, 400);
+      } catch (err) {
+        resolve({ ok: false, error: err.message });
+      }
+    });
   } else {
-    steps.push({ type: 'app', target: label, status: 'error', message: launch.error || '啟動失敗' });
+    launch = await launchExecutable(detected.path);
   }
+
+  steps.push({
+    type: 'app',
+    target: appObj.workspaceFolder ? (label + ' (' + appObj.workspaceFolder + ')') : label,
+    status: launch.ok ? 'ok' : 'error',
+    message: launch.ok ? ('Opened ' + detected.path) : launch.error || 'Launch failed',
+  });
 }
 
 async function openApp(appObj, steps) {
   const label = appLabel(appObj);
   if (!appObj.path || !fs.existsSync(appObj.path)) {
-    steps.push({ type: 'app', target: label, status: 'error', message: `找不到應用程式路徑：${appObj.path || '(空白)'}` });
+    steps.push({ type: 'app', target: label, status: 'error', message: `找不到應用程式：${appObj.path || '(空白)'}` });
     return;
   }
+
   const launch = await launchExecutable(appObj.path);
-  if (launch.ok) {
-    steps.push({ type: 'app', target: label, status: 'ok', message: `已開啟 ${appObj.path}` });
-  } else {
-    steps.push({ type: 'app', target: label, status: 'error', message: launch.error || '啟動失敗' });
-  }
+  steps.push({
+    type: 'app',
+    target: label,
+    status: launch.ok ? 'ok' : 'error',
+    message: launch.ok ? `已啟動 ${appObj.path}` : launch.error || '啟動失敗',
+  });
 }
 
 async function openFolder(folderPath, steps) {
@@ -222,75 +235,69 @@ async function openFolder(folderPath, steps) {
     steps.push({ type: 'folder', target: folderPath, status: 'error', message: '找不到資料夾' });
     return;
   }
+
   try {
-    const err = await shell.openPath(folderPath);
-    if (err) {
-      steps.push({ type: 'folder', target: folderPath, status: 'error', message: err });
-    } else {
-      steps.push({ type: 'folder', target: folderPath, status: 'ok', message: '已開啟' });
-    }
+    const err = await requireShell().openPath(folderPath);
+    steps.push({
+      type: 'folder',
+      target: folderPath,
+      status: err ? 'error' : 'ok',
+      message: err || '已開啟',
+    });
   } catch (err) {
     steps.push({ type: 'folder', target: folderPath, status: 'error', message: err.message });
   }
 }
 
 async function openUrl(url, steps) {
-  // In development, never open the app's own dev server in an external browser.
-  if (!app.isPackaged && isOwnDevServerUrl(url)) {
+  if (!isPackaged() && isOwnDevServerUrl(url)) {
     steps.push({
       type: 'url',
       target: url,
       status: 'skipped',
-      message: '已略過：這是 App 自己的開發網址 (localhost:5173)，請用 Electron 視窗操作，不需在瀏覽器開啟',
+      message: '略過 App 自己的開發伺服器，避免用外部瀏覽器開啟缺少 Electron bridge 的頁面。',
     });
     return;
   }
+
   try {
-    await shell.openExternal(url);
-    steps.push({ type: 'url', target: url, status: 'ok', message: '已在瀏覽器開啟' });
+    await requireShell().openExternal(url);
+    steps.push({ type: 'url', target: url, status: 'ok', message: '已開啟網址' });
   } catch (err) {
     steps.push({ type: 'url', target: url, status: 'error', message: err.message });
   }
 }
 
-// ---------------------------------------------------------------------------
-// Dev-server duplicate-launch guard
-// ---------------------------------------------------------------------------
 function isDevServerCommand(text) {
   return /(^|\s)(npm|pnpm|yarn)\s+(run\s+)?dev(\s|$)/i.test(text || '');
 }
 
-/** Port explicitly given on the command line (e.g. "--port 3000" / "-p 3000"), else null. */
 function portFromCommand(commandText) {
-  const m = (commandText || '').match(/(?:--port|-p)[ =](\d{2,5})/i);
-  return m ? parseInt(m[1], 10) : null;
+  const match = (commandText || '').match(/(?:--port|-p)[ =](\d{2,5})/i);
+  return match ? parseInt(match[1], 10) : null;
 }
 
-/** Best-effort: read `server.port` from a vite config in the command's cwd. */
 function portFromViteConfig(cwd) {
   if (!cwd) return null;
-  const names = ['vite.config.js', 'vite.config.mjs', 'vite.config.ts', 'vite.config.cjs'];
-  for (const name of names) {
+  for (const name of ['vite.config.js', 'vite.config.mjs', 'vite.config.ts', 'vite.config.cjs']) {
     try {
-      const fp = path.join(cwd, name);
-      if (fs.existsSync(fp)) {
-        const txt = fs.readFileSync(fp, 'utf-8');
-        const m = txt.match(/port\s*:\s*(\d{2,5})/);
-        if (m) return parseInt(m[1], 10);
+      const filePath = path.join(cwd, name);
+      if (fs.existsSync(filePath)) {
+        const text = fs.readFileSync(filePath, 'utf-8');
+        const match = text.match(/port\s*:\s*(\d{2,5})/);
+        if (match) return parseInt(match[1], 10);
       }
     } catch (_) {
-      /* ignore unreadable config */
+      // ignore unreadable config
     }
   }
   return null;
 }
 
-/** Resolve the dev-server port: explicit command flag > vite.config > default 5173. */
 function devServerPort(commandText, cwd) {
   return portFromCommand(commandText) || portFromViteConfig(cwd) || DEFAULT_DEV_PORT;
 }
 
-/** Probe http://127.0.0.1:<port>/; returns whether it is reachable and whether it is OUR app. */
 function probeLocalServer(port) {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: '/', timeout: 1500 }, (res) => {
@@ -313,7 +320,7 @@ async function runCommand(cmd, steps, options = {}) {
   const commandText = cmd && cmd.command ? cmd.command : '';
 
   if (!commandText) {
-    steps.push({ type: 'command', target: '(空白)', status: 'error', message: '指令為空' });
+    steps.push({ type: 'command', target: '(空白)', status: 'error', message: '指令不可空白' });
     return;
   }
   if (cmd.cwd && !fs.existsSync(cmd.cwd)) {
@@ -321,7 +328,6 @@ async function runCommand(cmd, steps, options = {}) {
     return;
   }
 
-  // Avoid double-starting the dev server (port conflict / multiple instances).
   if (isDevServerCommand(commandText)) {
     const port = devServerPort(commandText, cwd);
     const probe = await probeLocalServer(port);
@@ -342,15 +348,14 @@ async function runCommand(cmd, steps, options = {}) {
           status: 'skipped',
           message: probe.isOwn
             ? `localhost:${port} 已在執行，略過 ${commandText}。`
-            : `localhost:${port} 已被其他程式佔用（不是本專案），略過 ${commandText}，請確認。`,
+            : `localhost:${port} 已被其他程式使用，略過 ${commandText}。`,
         });
         return;
       }
-      // decision === 'launch' → fall through and start it anyway.
     }
   }
 
-  return new Promise((resolve) => {
+  await new Promise((resolve) => {
     try {
       const isWin = process.platform === 'win32';
       const child = spawn(commandText, {
@@ -371,7 +376,7 @@ async function runCommand(cmd, steps, options = {}) {
           try {
             child.unref();
           } catch (_) {
-            /* noop */
+            // noop
           }
         }
         steps.push({ type: 'command', target: commandText, cwd, status: 'ok', message: '已啟動' });
@@ -381,9 +386,9 @@ async function runCommand(cmd, steps, options = {}) {
       child.on('exit', (code) => {
         clearTimeout(timer);
         if (code === 0) {
-          steps.push({ type: 'command', target: commandText, cwd, status: 'ok', message: '已執行完成' });
+          steps.push({ type: 'command', target: commandText, cwd, status: 'ok', message: '已完成' });
         } else {
-          steps.push({ type: 'command', target: commandText, cwd, status: 'error', message: `結束代碼 ${code}` });
+          steps.push({ type: 'command', target: commandText, cwd, status: 'error', message: `結束碼 ${code}` });
         }
         resolve();
       });
@@ -397,7 +402,7 @@ async function runCommand(cmd, steps, options = {}) {
 async function runMode(config, modeName, options = {}) {
   const mode = findMode(config, modeName);
   if (!mode) {
-    return { ok: false, mode: modeName || '(預設)', error: '找不到指定的模式設定', steps: [] };
+    return { ok: false, mode: modeName || '(預設)', error: '找不到工作模式設定', steps: [] };
   }
 
   const general = (config && config.general) || {};
@@ -405,29 +410,14 @@ async function runMode(config, modeName, options = {}) {
 
   for (const rawApp of mode.apps || []) {
     const appObj = normalizeApp(rawApp);
-    // eslint-disable-next-line no-await-in-loop
-    if (isVSCodePath(appObj.path)) {
-      // eslint-disable-next-line no-await-in-loop
-      await openVSCode(appObj, general.vscodePath, steps);
-    } else {
-      // eslint-disable-next-line no-await-in-loop
-      await openApp(appObj, steps);
-    }
+    if (isVSCodePath(appObj.path)) await openVSCode(appObj, general.vscodePath, steps);
+    else await openApp(appObj, steps);
   }
-  for (const folder of mode.folders || []) {
-    // eslint-disable-next-line no-await-in-loop
-    await openFolder(folder, steps);
-  }
-  for (const url of mode.urls || []) {
-    // eslint-disable-next-line no-await-in-loop
-    await openUrl(url, steps);
-  }
-  for (const cmd of mode.commands || []) {
-    // eslint-disable-next-line no-await-in-loop
-    await runCommand(cmd, steps, options);
-  }
+  for (const folder of mode.folders || []) await openFolder(folder, steps);
+  for (const url of mode.urls || []) await openUrl(url, steps);
+  for (const command of mode.commands || []) await runCommand(command, steps, options);
 
-  const hasError = steps.some((s) => s.status === 'error');
+  const hasError = steps.some((step) => step.status === 'error');
   return { ok: !hasError, mode: mode.name, steps };
 }
 

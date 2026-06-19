@@ -1,6 +1,12 @@
 'use strict';
 
-const { app } = require('electron');
+let electronApp = null;
+try {
+  const electron = require('electron');
+  electronApp = electron && electron.app ? electron.app : null;
+} catch (_) {
+  // Keep service importable outside Electron.
+}
 
 /**
  * Auto-launch (start at login) service.
@@ -9,17 +15,17 @@ const { app } = require('electron');
  */
 
 function isSupported() {
-  return process.platform === 'win32' && app.isPackaged;
+  return process.platform === 'win32' && !!(electronApp && electronApp.isPackaged);
 }
 
 function apply(enabled) {
   if (!isSupported()) return { supported: false };
   try {
-    app.setLoginItemSettings({
+    electronApp.setLoginItemSettings({
       openAtLogin: !!enabled,
       enabled: !!enabled,
       path: process.execPath,
-      args: ['--hidden'],
+      args: [],
     });
     return { supported: true };
   } catch (err) {
@@ -29,7 +35,7 @@ function apply(enabled) {
 
 function getOpenAtLogin() {
   try {
-    return isSupported() ? app.getLoginItemSettings().openAtLogin : null;
+    return isSupported() ? electronApp.getLoginItemSettings().openAtLogin : null;
   } catch (_) {
     return null;
   }

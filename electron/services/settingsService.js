@@ -1,64 +1,152 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { app } = require('electron');
+let electronApp = null;
+try {
+  const electron = require('electron');
+  electronApp = electron && electron.app ? electron.app : null;
+} catch (_) {
+  // Keep settings usable in Node-based smoke tests.
+}
 
-/**
- * Settings service.
- *
- * - In development we read/write ./config/user-settings.json directly so it is
- *   easy to inspect and edit while coding.
- * - In a packaged app the bundled config is read-only (inside resources/), so on
- *   first launch we copy it into the writable userData directory and use that.
- */
+const DEFAULT_PROJECT_EXCLUDES = [
+  'C:\\Windows',
+  'C:\\Program Files',
+  'C:\\Program Files (x86)',
+  'C:\\ProgramData',
+  'AppData',
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  'out',
+  '.cache',
+  '.vscode',
+  'venv',
+  '.venv',
+];
 
-const DEFAULT_SETTINGS = {
-  general: {
-    downloadsPath: '',
-    monitorDrives: [],
-    monitorDrive: '', // legacy single-drive field (kept for backward compatibility)
-    screenshotsPath: '',
-    vscodePath: '',
-    // General preferences
-    autoLaunch: true,
-    minimizeToTray: true,
-    startMinimized: false,
-    notifications: true,
-    // Appearance
-    theme: 'system', // 'system' | 'light' | 'dark'
-    accentColor: '#4f8cff',
-    compactMode: false,
-    // Watching / automation
-    watchEnabled: true,
-    watchFolders: [],
-    automationsEnabled: true,
-    askBeforeOrganizing: true,
-    keepHistory: true,
-  },
-  modes: [],
-  projects: [],
-  rules: [],
-  automations: [],
-  history: [],
-  screenshots: {
-    path: '',
-    keywords: {},
-  },
-};
+function safeAppPath(name, fallbackName) {
+  try {
+    if (electronApp && electronApp.isReady()) return electronApp.getPath(name);
+  } catch (_) {
+    /* fall through */
+  }
+  return path.join(os.homedir(), fallbackName);
+}
+
+function uniqueStrings(values) {
+  const seen = new Set();
+  const out = [];
+  for (const value of values || []) {
+    if (!value || typeof value !== 'string') continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+function defaultProjectHubSettings() {
+  return {
+    scanRoots: uniqueStrings([
+      safeAppPath('desktop', 'Desktop'),
+      safeAppPath('documents', 'Documents'),
+      safeAppPath('downloads', 'Downloads'),
+      safeAppPath('pictures', 'Pictures'),
+      safeAppPath('videos', 'Videos'),
+      safeAppPath('music', 'Music'),
+      path.join(os.homedir(), 'Desktop', 'windows assistant'),
+    ]),
+    excludeFolders: [...DEFAULT_PROJECT_EXCLUDES],
+    maxDepth: 2,
+    pinnedProjects: [],
+  };
+}
+
+function createDefaultSettings() {
+  return {
+    general: {
+      downloadsPath: '',
+      monitorDrives: [],
+      monitorDrive: '',
+      screenshotsPath: '',
+      vscodePath: '',
+      autoLaunch: true,
+      minimizeToTray: true,
+      startMinimized: false,
+      showOnStartup: true,
+      showOnResume: true,
+      notifications: true,
+      autoUpdate: true,
+      theme: 'system',
+      accentColor: '#4f8cff',
+      compactMode: false,
+      watchEnabled: true,
+      watchFolders: [],
+      projectScanRoots: [],
+      automationsEnabled: true,
+      askBeforeOrganizing: true,
+      keepHistory: true,
+      firstRunCompleted: false,
+      lastSetupCheckAt: '',
+    },
+    projectHub: defaultProjectHubSettings(),
+    cleanup: {
+      enabledCategories: [],
+      lastScanAt: '',
+    },
+    healthGuard: {
+      enabled: true,
+      mode: 'normal',
+      intervalMinutes: 5,
+      cooldownMinutes: 30,
+      cpuTempC: 85,
+      gpuTempC: 85,
+      ramPercent: 85,
+      diskFreeGb: 50,
+      diskFreePercent: 15,
+    },
+    ui: {
+      dismissedHints: [],
+    },
+    modes: [],
+    projects: [],
+    rules: [],
+    automations: [],
+    history: [],
+    cheatsheet: [],
+    screenshots: {
+      path: '',
+      keywords: {},
+      organizer: {
+        organizeByDate: true,
+        categoryUnderDate: true,
+        renameConflicts: true,
+        skipAlreadyOrganized: true,
+        includeSubfolders: false,
+        includeHiddenFiles: false,
+        showFullPaths: false,
+      },
+    },
+  };
+}
+
+const DEFAULT_SETTINGS = createDefaultSettings();
 
 function bundledConfigPath() {
-  // Packaged: resources/config/user-settings.json (see extraResources in package.json)
-  // Dev: <projectRoot>/config/user-settings.json
-  if (app.isPackaged) {
+  if (electronApp && electronApp.isPackaged) {
     return path.join(process.resourcesPath, 'config', 'user-settings.json');
   }
   return path.join(__dirname, '..', '..', 'config', 'user-settings.json');
 }
 
 function activeConfigPath() {
-  if (app.isPackaged) {
-    return path.join(app.getPath('userData'), 'user-settings.json');
+  if (electronApp && electronApp.isPackaged) {
+    return path.join(electronApp.getPath('userData'), 'user-settings.json');
   }
   return path.join(__dirname, '..', '..', 'config', 'user-settings.json');
 }
@@ -72,7 +160,7 @@ function ensureConfigExists() {
       if (fs.existsSync(source)) {
         fs.copyFileSync(source, target);
       } else {
-        fs.writeFileSync(target, JSON.stringify(DEFAULT_SETTINGS, null, 2), 'utf-8');
+        fs.writeFileSync(target, JSON.stringify(createDefaultSettings(), null, 2), 'utf-8');
       }
     }
   } catch (err) {
@@ -80,17 +168,75 @@ function ensureConfigExists() {
   }
 }
 
-function mergeSettings(parsed) {
+function normalizeProjectHub(parsed, defaults) {
+  const incoming = parsed.projectHub && typeof parsed.projectHub === 'object' ? parsed.projectHub : null;
+  const legacyRoots = parsed.general && Array.isArray(parsed.general.projectScanRoots)
+    ? parsed.general.projectScanRoots
+    : [];
+
+  if (!incoming) {
+    return {
+      ...defaults.projectHub,
+      scanRoots: uniqueStrings([...defaults.projectHub.scanRoots, ...legacyRoots]),
+    };
+  }
+
   return {
-    ...DEFAULT_SETTINGS,
+    ...defaults.projectHub,
+    ...incoming,
+    scanRoots: Array.isArray(incoming.scanRoots)
+      ? uniqueStrings(incoming.scanRoots)
+      : uniqueStrings([...defaults.projectHub.scanRoots, ...legacyRoots]),
+    excludeFolders: Array.isArray(incoming.excludeFolders)
+      ? uniqueStrings(incoming.excludeFolders)
+      : defaults.projectHub.excludeFolders,
+    maxDepth: Number.isFinite(Number(incoming.maxDepth))
+      ? Number(incoming.maxDepth)
+      : defaults.projectHub.maxDepth,
+    pinnedProjects: Array.isArray(incoming.pinnedProjects)
+      ? incoming.pinnedProjects
+      : defaults.projectHub.pinnedProjects,
+  };
+}
+
+function mergeSettings(parsed) {
+  const defaults = createDefaultSettings();
+  return {
+    ...defaults,
     ...parsed,
-    general: { ...DEFAULT_SETTINGS.general, ...(parsed.general || {}) },
+    general: { ...defaults.general, ...(parsed.general || {}) },
+    cleanup: {
+      ...defaults.cleanup,
+      ...(parsed.cleanup || {}),
+      enabledCategories: Array.isArray((parsed.cleanup || {}).enabledCategories)
+        ? parsed.cleanup.enabledCategories
+        : defaults.cleanup.enabledCategories,
+    },
+    healthGuard: {
+      ...defaults.healthGuard,
+      ...(parsed.healthGuard || {}),
+    },
+    ui: {
+      ...defaults.ui,
+      ...(parsed.ui || {}),
+      dismissedHints: Array.isArray((parsed.ui || {}).dismissedHints)
+        ? parsed.ui.dismissedHints
+        : defaults.ui.dismissedHints,
+    },
+    projectHub: normalizeProjectHub(parsed, defaults),
     modes: Array.isArray(parsed.modes) ? parsed.modes : [],
     projects: Array.isArray(parsed.projects) ? parsed.projects : [],
     rules: Array.isArray(parsed.rules) ? parsed.rules : [],
     automations: Array.isArray(parsed.automations) ? parsed.automations : [],
     history: Array.isArray(parsed.history) ? parsed.history : [],
-    screenshots: { ...DEFAULT_SETTINGS.screenshots, ...(parsed.screenshots || {}) },
+    screenshots: {
+      ...defaults.screenshots,
+      ...(parsed.screenshots || {}),
+      organizer: {
+        ...defaults.screenshots.organizer,
+        ...(((parsed.screenshots || {}).organizer) || {}),
+      },
+    },
   };
 }
 
@@ -102,14 +248,12 @@ function getSettings() {
     const parsed = JSON.parse(raw);
     return { ok: true, path: target, settings: mergeSettings(parsed) };
   } catch (err) {
-    // Corrupt settings: back up the bad file and recreate defaults so the app
-    // keeps working instead of failing to start.
     let recovered = false;
     let backupPath = null;
     try {
       backupPath = `${target}.corrupt-${Date.now()}.json`;
       if (fs.existsSync(target)) fs.renameSync(target, backupPath);
-      fs.writeFileSync(target, JSON.stringify(DEFAULT_SETTINGS, null, 2), 'utf-8');
+      fs.writeFileSync(target, JSON.stringify(createDefaultSettings(), null, 2), 'utf-8');
       recovered = true;
     } catch (rebuildErr) {
       console.error('[settingsService] rebuild after corruption failed:', rebuildErr);
@@ -117,10 +261,10 @@ function getSettings() {
     return {
       ok: recovered,
       path: target,
-      error: `設定檔損毀，已備份為 ${backupPath || '(備份失敗)'} 並重建預設值（原因：${err.message}）`,
+      error: `Settings JSON was corrupt. Backup: ${backupPath || '(backup failed)'}. ${err.message}`,
       recovered,
       backupPath,
-      settings: { ...DEFAULT_SETTINGS },
+      settings: createDefaultSettings(),
     };
   }
 }
@@ -128,19 +272,21 @@ function getSettings() {
 function saveSettings(newSettings) {
   const target = activeConfigPath();
   try {
-    // Validate it is serialisable / well formed before writing.
     const serialised = JSON.stringify(newSettings, null, 2);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, serialised, 'utf-8');
     return { ok: true, path: target };
   } catch (err) {
-    return { ok: false, path: target, error: `設定檔儲存失敗：${err.message}` };
+    return { ok: false, path: target, error: `Could not save settings: ${err.message}` };
   }
 }
 
 module.exports = {
   DEFAULT_SETTINGS,
+  createDefaultSettings,
+  defaultProjectHubSettings,
   activeConfigPath,
   getSettings,
   saveSettings,
+  mergeSettings,
 };

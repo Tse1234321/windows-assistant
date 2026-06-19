@@ -1,27 +1,38 @@
 {
   "name": "pc-life-assistant",
-  "version": "2.0.0",
-  "description": "PC Life Assistant - 專為學生與工程師設計的 Windows 桌面助理，整合工作模式啟動、檔案整理、系統健康監控與 Git / 備份提醒。",
+  "version": "2.2.0",
+  "description": "PC Life Assistant - Windows desktop assistant for file organization, project shortcuts, automations, system monitoring, and Git health checks.",
   "author": "jeremywu0420",
   "license": "MIT",
   "main": "electron/main.js",
   "scripts": {
+    "prebuild": "node scripts/clean-dist.js",
     "dev": "concurrently -k -n VITE,ELECTRON -c cyan,green \"vite --host 127.0.0.1\" \"wait-on tcp:127.0.0.1:5173 && cross-env NODE_ENV=development electron .\"",
     "dev:vite": "vite --host 127.0.0.1",
     "dev:electron": "wait-on tcp:127.0.0.1:5173 && cross-env NODE_ENV=development electron .",
-    "build": "vite build",
+    "build": "vite build --emptyOutDir false",
     "preview": "vite preview",
     "gen:icons": "node scripts/generate-icons.js",
     "package": "npm run gen:icons && npm run build && electron-builder",
-    "package:dir": "npm run gen:icons && npm run build && electron-builder --dir"
+    "package:dir": "npm run gen:icons && npm run build && electron-builder --dir",
+    "release:github": "npm run gen:icons && npm run build && electron-builder --publish always"
   },
   "build": {
     "appId": "com.jeremywu0420.pclifeassistant",
     "productName": "PC Life Assistant",
     "directories": {
-      "output": "release",
+      "output": "release-auto",
       "buildResources": "build"
     },
+    "artifactName": "PC-Life-Assistant-Setup-${version}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "jeremywu0420",
+        "repo": "windows-assistant",
+        "releaseType": "release"
+      }
+    ],
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -43,7 +54,8 @@
           ]
         }
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,
@@ -56,14 +68,15 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "concurrently": "^9.1.2",
+    "concurrently": "^10.0.3",
     "cross-env": "^7.0.3",
-    "electron": "^33.3.1",
-    "electron-builder": "^25.1.8",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
     "vite": "^6.0.7",
     "wait-on": "^8.0.1"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   }

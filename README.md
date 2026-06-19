@@ -165,7 +165,7 @@ npm run package:dir   # 輸出到 release/win-unpacked/
       "name": "寫程式模式",
       "apps": ["C:\\Users\\User\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"],
       "folders": ["D:\\Projects\\codex"],
-      "urls": ["http://localhost:5173", "https://github.com/jeremywu0420/codex"],
+      "urls": ["http://localhost:5173", "https://github.com/your-name/your-project"],
       "commands": [{ "cwd": "D:\\Projects\\codex", "command": "npm run dev" }]
     }
   ],

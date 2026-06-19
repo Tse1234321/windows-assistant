@@ -1,40 +1,125 @@
 {
   "general": {
-    "downloadsPath": "D:\\我的資料庫\\Downloads",
-    "monitorDrives": ["C:\\", "D:\\"],
-    "screenshotsPath": "D:\\我的資料庫\\Pictures\\Screenshots",
-    "vscodePath": "C:\\Users\\Jeremy\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
-    "autoLaunch": true
+    "downloadsPath": "C:\\Users\\jerem\\Downloads",
+    "monitorDrives": [
+      "C:\\"
+    ],
+    "screenshotsPath": "C:\\Users\\jerem\\Pictures\\Screenshots",
+    "vscodePath": "C:\\Users\\jerem\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+    "autoLaunch": true,
+    "minimizeToTray": true,
+    "startMinimized": false,
+    "notifications": true,
+    "autoUpdate": true,
+    "theme": "system",
+    "accentColor": "#4f8cff",
+    "compactMode": false,
+    "watchEnabled": true,
+    "watchFolders": [],
+    "projectScanRoots": [
+      "C:\\Users\\jerem\\Desktop",
+      "C:\\Users\\jerem\\Documents",
+      "C:\\Users\\jerem\\Downloads"
+    ],
+    "automationsEnabled": true,
+    "askBeforeOrganizing": true,
+    "keepHistory": true,
+    "showOnStartup": true,
+    "showOnResume": true
+  },
+  "projectHub": {
+    "scanRoots": [
+      "C:\\Users\\jerem\\Desktop",
+      "C:\\Users\\jerem\\Documents",
+      "C:\\Users\\jerem\\Downloads",
+      "C:\\Users\\jerem\\Pictures"
+    ],
+    "excludeFolders": [
+      "C:\\Windows",
+      "C:\\Program Files",
+      "C:\\Program Files (x86)",
+      "C:\\ProgramData",
+      "AppData",
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+      "out",
+      ".cache",
+      ".vscode",
+      "venv",
+      ".venv",
+      "release",
+      "release-auto"
+    ],
+    "maxDepth": 2
   },
   "screenshots": {
-    "path": "D:\\我的資料庫\\Pictures\\Screenshots",
-    "keywords": {}
+    "path": "C:\\Users\\jerem\\Pictures\\Screenshots",
+    "keywords": {},
+    "organizer": {
+      "organizeByDate": true,
+      "categoryUnderDate": true,
+      "renameConflicts": true,
+      "skipAlreadyOrganized": true,
+      "includeSubfolders": false,
+      "includeHiddenFiles": false,
+      "showFullPaths": false
+    }
   },
   "rules": [
-    { "id": "downloads-count", "type": "downloadsCount", "label": "Downloads 檔案數提醒", "enabled": true, "threshold": 50, "level": "warn" },
-    { "id": "ram-usage", "type": "ramUsage", "label": "RAM 使用率提醒", "enabled": true, "threshold": 80, "level": "warn" },
-    { "id": "project-stale", "type": "projectStale", "label": "專案太久沒 commit 提醒", "enabled": true, "threshold": 24, "level": "warn" },
-    { "id": "disk-free", "type": "diskFree", "label": "磁碟剩餘空間提醒", "enabled": true, "threshold": 20, "level": "danger" }
+    {
+      "id": "downloads-count",
+      "type": "downloadsCount",
+      "label": "Downloads 檔案數量",
+      "enabled": true,
+      "threshold": 50,
+      "level": "warn"
+    },
+    {
+      "id": "ram-usage",
+      "type": "ramUsage",
+      "label": "RAM 使用率",
+      "enabled": true,
+      "threshold": 80,
+      "level": "warn"
+    },
+    {
+      "id": "project-stale",
+      "type": "projectStale",
+      "label": "專案太久未 commit",
+      "enabled": true,
+      "threshold": 24,
+      "level": "warn"
+    },
+    {
+      "id": "disk-free",
+      "type": "diskFree",
+      "label": "磁碟可用空間過低",
+      "enabled": true,
+      "threshold": 20,
+      "level": "danger"
+    }
   ],
   "modes": [
     {
-      "name": "寫程式模式",
+      "name": "開發模式",
       "apps": [
         {
-          "path": "C:\\Users\\Jeremy\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+          "path": "C:\\Users\\jerem\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
           "name": "VS Code",
-          "icon": "🆚"
+          "icon": "VS"
         }
       ],
       "folders": [
-        "D:\\我的資料庫\\Desktop\\windows assistant\\windows-assistant"
+        "C:\\Users\\jerem\\Desktop\\windows assistant\\windows-assistant"
       ],
       "urls": [
         "https://github.com/jeremywu0420/windows-assistant"
       ],
       "commands": [
         {
-          "cwd": "D:\\我的資料庫\\Desktop\\windows assistant\\windows-assistant",
+          "cwd": "C:\\Users\\jerem\\Desktop\\windows assistant\\windows-assistant",
           "command": "npm run dev"
         }
       ]
@@ -43,9 +128,11 @@
   "projects": [
     {
       "name": "windows-assistant",
-      "path": "D:\\我的資料庫\\Desktop\\windows assistant\\windows-assistant",
+      "path": "C:\\Users\\jerem\\Desktop\\windows assistant\\windows-assistant",
       "gitReminderHours": 2,
       "backupReminderHours": 24
     }
-  ]
+  ],
+  "automations": [],
+  "history": []
 }

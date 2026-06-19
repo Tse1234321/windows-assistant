@@ -1,13 +1,9 @@
 import React from 'react';
 import Button from './Button.jsx';
 
-/**
- * Confirm dialog. Controlled via `open`.
- * onConfirm / onCancel are required; `danger` styles the confirm button.
- */
 export default function Dialog({
   open,
-  title = '確認',
+  title = '確認操作',
   message,
   confirmLabel = '確認',
   cancelLabel = '取消',
@@ -16,9 +12,10 @@ export default function Dialog({
   onCancel,
 }) {
   if (!open) return null;
+
   return (
     <div className="dialog-overlay" onMouseDown={onCancel}>
-      <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog" onMouseDown={(event) => event.stopPropagation()}>
         <h3>{title}</h3>
         {message ? <p>{message}</p> : null}
         <div className="dialog-actions">

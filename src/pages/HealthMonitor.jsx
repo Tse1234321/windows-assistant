@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import Button from '../components/Button.jsx';
+import Card from '../components/Card.jsx';
+import EmptyState from '../components/EmptyState.jsx';
+import StatusBadge from '../components/StatusBadge.jsx';
 import StatusCard from '../components/StatusCard.jsx';
-import ActionButton from '../components/ActionButton.jsx';
 import { formatGB, formatUptime, usageLevel } from '../utils/format.js';
+
+function healthTone(score) {
+  if (score >= 80) return 'ok';
+  if (score >= 60) return 'warn';
+  return 'danger';
+}
 
 export default function HealthMonitor() {
   const [status, setStatus] = useState(null);
@@ -10,17 +19,18 @@ export default function HealthMonitor() {
 
   const refresh = useCallback(async () => {
     if (!window.api) {
-      setError('無法連接 Electron 主程序。');
+      setError('Electron API 尚未就緒，請在桌面 App 內使用。');
       setLoading(false);
       return;
     }
+
     setLoading(true);
     const res = await window.api.getSystemStatus();
     if (res.ok) {
       setStatus(res);
       setError('');
     } else {
-      setError(res.error || '讀取失敗');
+      setError(res.error || '讀取健康狀態失敗');
     }
     setLoading(false);
   }, []);
@@ -31,132 +41,142 @@ export default function HealthMonitor() {
     return () => clearInterval(id);
   }, [refresh]);
 
-  const metrics = status && status.metrics;
-  const health = status && status.health;
-  const projects = (status && status.git && status.git.projects) || [];
+  const metrics = status?.metrics;
+  const health = status?.health;
+  const projects = status?.git?.projects || [];
 
   return (
     <div>
-      <div className="row-between">
+      <div className="page-head">
         <div>
-          <h1 className="page-title">健康監控 / Git</h1>
-          <p className="page-subtitle">CPU / RAM / 磁碟 / 開機時間，以及專案 Git 狀態。</p>
+          <p className="eyebrow">PC HEALTH</p>
+          <h1 className="page-title">健康檢查 / Git</h1>
+          <p className="page-subtitle">
+            結合系統壓力、磁碟空間與專案 Git 狀態，幫你快速看到目前最需要處理的項目。
+          </p>
         </div>
-        <ActionButton icon="🔄" busy={loading} onClick={refresh}>
-          重新整理
-        </ActionButton>
+        <div className="head-actions">
+          <Button icon="RF" busy={loading} onClick={refresh}>
+            重新整理
+          </Button>
+        </div>
       </div>
 
-      {error ? <div className="error-banner">⚠️ {error}</div> : null}
+      {error ? <div className="error-banner">{error}</div> : null}
 
       {health ? (
-        <div className="card health-hero">
-          <div>
-            <div className="muted">PC Health Score</div>
-            <div className="health-score">
-              {health.score} <small>/ 100</small>
+        <Card className="health-panel">
+          <div
+            className="health-ring"
+            style={{
+              '--score': `${Math.max(0, Math.min(100, health.score)) * 3.6}deg`,
+              '--score-color': `var(--${healthTone(health.score)})`,
+            }}
+          >
+            <div>
+              <strong>{health.score}</strong>
+              <span>/ 100</span>
             </div>
           </div>
-          <div>
-            <span
-              className={`badge ${
-                health.score >= 80 ? 'ok' : health.score >= 60 ? 'warn' : 'danger'
-              }`}
-            >
-              狀態：{health.status}
-            </span>
-            <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-              {health.deductions.length === 0
-                ? '沒有扣分項目。'
-                : health.deductions.map((d) => `${d.reason} (${d.points})`).join('；')}
+          <div className="health-copy">
+            <div className="panel-label">HEALTH SUMMARY</div>
+            <h2>{health.status}</h2>
+            <p>
+              {health.deductions?.length
+                ? health.deductions.map((deduction) => `${deduction.reason} (${deduction.points})`).join('、')
+                : '目前沒有明顯扣分項目。'}
+            </p>
+            <div className="health-actions">
+              <StatusBadge tone={healthTone(health.score)}>
+                {health.score >= 80 ? '穩定' : health.score >= 60 ? '留意' : '處理'}
+              </StatusBadge>
             </div>
           </div>
-        </div>
+        </Card>
       ) : null}
 
-      <div className="card-grid">
+      <div className="metric-grid">
         <StatusCard
           label="CPU"
-          icon="🧠"
-          value={metrics ? `${metrics.cpu.usagePercent}%` : '—'}
-          sub={metrics ? `${metrics.cpu.cores} 核心${metrics.cpu.sustainedHigh ? ' · 持續偏高' : ''}` : ''}
+          icon="CP"
+          value={metrics ? `${metrics.cpu.usagePercent}%` : '--'}
+          sub={metrics ? `${metrics.cpu.cores} 核心${metrics.cpu.sustainedHigh ? '，持續偏高' : ''}` : ''}
           barPercent={metrics ? metrics.cpu.usagePercent : 0}
           barLevel={metrics ? usageLevel(metrics.cpu.usagePercent) : 'ok'}
         />
         <StatusCard
-          label="RAM"
-          icon="💾"
-          value={metrics ? `${metrics.memory.usagePercent}%` : '—'}
+          label="記憶體"
+          icon="RM"
+          value={metrics ? `${metrics.memory.usagePercent}%` : '--'}
           sub={metrics ? `${formatGB(metrics.memory.usedBytes)} / ${formatGB(metrics.memory.totalBytes)}` : ''}
           barPercent={metrics ? metrics.memory.usagePercent : 0}
           barLevel={metrics ? usageLevel(metrics.memory.usagePercent) : 'ok'}
         />
-        {(metrics && metrics.disks ? metrics.disks : []).map((d, i) =>
-          d.ok ? (
+        {(metrics?.disks || []).map((disk, index) =>
+          disk.ok ? (
             <StatusCard
-              key={i}
-              label={`磁碟 ${d.drive}`}
-              icon="🗄️"
-              value={formatGB(d.free)}
-              sub={`剩餘 ${d.freePercent}% · 共 ${formatGB(d.total)}`}
-              barPercent={d.usedPercent}
-              barLevel={d.freePercent < 20 ? 'danger' : 'ok'}
+              key={`${disk.drive}-${index}`}
+              label={`磁碟 ${disk.drive}`}
+              icon="DS"
+              value={formatGB(disk.free)}
+              sub={`可用 ${disk.freePercent}%，總容量 ${formatGB(disk.total)}`}
+              barPercent={disk.usedPercent}
+              barLevel={disk.freePercent < 20 ? 'danger' : disk.freePercent < 35 ? 'warn' : 'ok'}
             />
           ) : (
-            <StatusCard key={i} label={`磁碟 ${d.drive}`} icon="🗄️" value="—" sub={d.error || '無法讀取'} />
+            <StatusCard
+              key={`${disk.drive}-${index}`}
+              label={`磁碟 ${disk.drive}`}
+              icon="DS"
+              value="--"
+              sub={disk.error || '無法讀取'}
+            />
           )
         )}
         <StatusCard
           label="開機時間"
-          icon="⏱️"
-          value={metrics ? formatUptime(metrics.uptimeSeconds) : '—'}
+          icon="UP"
+          value={metrics ? formatUptime(metrics.uptimeSeconds) : '--'}
           sub={metrics ? metrics.hostname : ''}
         />
       </div>
 
-      <div className="section-title">Git / 備份提醒</div>
+      <div className="section-title">Git / 專案狀態</div>
       {projects.length === 0 ? (
-        <div className="card">
-          <p className="muted">尚未設定任何專案。請到「設定」頁面新增 projects。</p>
-        </div>
+        <EmptyState title="尚未設定 Git 專案" description="請到設定加入 projects，這裡會顯示未提交與長時間未更新的狀態。" />
       ) : (
-        <div className="card">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>專案</th>
-                <th>Git Repo</th>
-                <th>未 commit</th>
-                <th>距上次 commit</th>
-                <th>提醒</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((p, i) => (
-                <tr key={i}>
-                  <td>
-                    <div>{p.name}</div>
-                    <div className="path">{p.path}</div>
-                  </td>
-                  <td>{p.error ? <span className="status-error">✕</span> : <span className="status-ok">✓</span>}</td>
-                  <td>{p.isGitRepo ? `${p.modifiedCount} 個` : '—'}</td>
-                  <td>
-                    {p.hoursSinceCommit !== null
-                      ? `${Math.floor(p.hoursSinceCommit)} 小時前`
-                      : '—'}
-                  </td>
-                  <td className="muted">
-                    {p.error
-                      ? p.error
-                      : p.messages.length > 0
-                      ? p.messages.join('；')
-                      : '✅ 一切正常'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          <div className="project-list">
+            {projects.map((project, index) => (
+              <div className="project-row" key={`${project.path}-${index}`}>
+                <div className="project-main">
+                  <div className="project-title">{project.name}</div>
+                  <div className="project-meta">{project.path}</div>
+                </div>
+                <div className="result-strip">
+                  <StatusBadge tone={project.error ? 'danger' : 'ok'}>
+                    {project.error ? '非 Git' : 'Git'}
+                  </StatusBadge>
+                  <span className="muted">
+                    {project.isGitRepo ? `${project.modifiedCount} 個變更` : '--'}
+                  </span>
+                  <span className="muted">
+                    {project.hoursSinceCommit !== null
+                      ? `${Math.floor(project.hoursSinceCommit)} 小時前提交`
+                      : '--'}
+                  </span>
+                </div>
+                <div className="project-note">
+                  {project.error
+                    ? project.error
+                    : project.messages?.length
+                    ? project.messages.join('、')
+                    : '狀態正常'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
     </div>
   );

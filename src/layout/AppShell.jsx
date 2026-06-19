@@ -7,7 +7,7 @@ export default function AppShell({ current, onNavigate, onOpenPalette, children 
     <div className="app-shell">
       <Sidebar current={current} onNavigate={onNavigate} />
       <div className="app-main">
-        <Topbar title={PAGE_TITLES[current] || 'PC Life Assistant'} onOpenPalette={onOpenPalette} />
+        <Topbar title={PAGE_TITLES[current] || 'PC Life Assistant'} onOpenPalette={onOpenPalette} onNavigate={onNavigate} />
         <div className="content-scroll">{children}</div>
       </div>
     </div>

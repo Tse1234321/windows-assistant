@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import Card from '../components/Card.jsx';
 import Button from '../components/Button.jsx';
-import Toggle from '../components/Toggle.jsx';
+import Card from '../components/Card.jsx';
 import Dialog from '../components/Dialog.jsx';
+import PageHeader from '../components/PageHeader.jsx';
+import StatusBadge from '../components/StatusBadge.jsx';
+import Toggle from '../components/Toggle.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useTheme } from '../theme/ThemeProvider.jsx';
 
-const inp = {
+const inputStyle = {
   background: 'var(--input-bg)',
   color: 'var(--input-text)',
   border: '1px solid var(--border)',
@@ -19,14 +21,16 @@ const inp = {
 };
 
 const CATEGORIES = [
-  { key: 'general', label: 'General', icon: '⚙️' },
-  { key: 'folders', label: 'Folders', icon: '📁' },
-  { key: 'appearance', label: 'Appearance', icon: '🎨' },
-  { key: 'automation', label: 'Automation', icon: '⚡' },
-  { key: 'advanced', label: 'Advanced', icon: '🛠️' },
+  { key: 'general', label: '一般', icon: 'GE' },
+  { key: 'paths', label: '路徑', icon: 'PA' },
+  { key: 'startup', label: '開機/喚醒', icon: 'ST' },
+  { key: 'guard', label: '監控守護', icon: 'HG' },
+  { key: 'cleanup', label: '清理', icon: 'CC' },
+  { key: 'automation', label: '自動化', icon: 'AU' },
+  { key: 'backup', label: '備份/還原', icon: 'BK' },
 ];
 
-const ACCENTS = ['#4f8cff', '#2563eb', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4'];
+const ACCENTS = ['#2f81f7', '#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2'];
 
 function Row({ label, desc, children }) {
   return (
@@ -43,207 +47,269 @@ function Row({ label, desc, children }) {
 export default function Settings() {
   const { toast } = useToast();
   const { theme, setTheme, accent, setAccent, compact, setCompact } = useTheme();
-  const [cat, setCat] = useState('general');
-  const [g, setG] = useState(null); // general object
+  const [category, setCategory] = useState('general');
+  const [settings, setSettings] = useState(null);
   const [autoLaunchSupported, setAutoLaunchSupported] = useState(true);
   const [confirmReset, setConfirmReset] = useState(false);
   const [configPath, setConfigPath] = useState('');
 
+  const general = settings?.general || {};
+  const guard = settings?.healthGuard || {};
+  const cleanup = settings?.cleanup || {};
+
   const load = async () => {
-    const res = await window.api.getSettings();
-    setG(res.settings.general || {});
-    setConfigPath(res.path || '');
-    const al = await window.api.getAutoLaunch();
-    if (al && al.ok) setAutoLaunchSupported(al.supported);
+    const result = await window.api.getSettings();
+    setSettings(result.settings);
+    setConfigPath(result.path || '');
+    const autoLaunch = await window.api.getAutoLaunch();
+    if (autoLaunch?.ok) setAutoLaunchSupported(autoLaunch.supported);
   };
-  useEffect(() => { load(); }, []);
 
-  // Persist a general patch and update local state.
+  useEffect(() => {
+    load();
+  }, []);
+
+  const saveAll = async (next) => {
+    setSettings(next);
+    const result = await window.api.saveSettings(next);
+    if (!result.ok) toast(result.error || '設定儲存失敗', 'error');
+    return result;
+  };
+
   const saveGeneral = async (patch) => {
-    setG((prev) => ({ ...prev, ...patch }));
-    const res = await window.api.getSettings();
-    await window.api.saveSettings({ ...res.settings, general: { ...(res.settings.general || {}), ...patch } });
+    const next = { ...settings, general: { ...general, ...patch } };
+    await saveAll(next);
   };
 
-  const toggleAutoLaunch = async (v) => {
-    setG((prev) => ({ ...prev, autoLaunch: v }));
-    const r = await window.api.setAutoLaunch(v);
-    toast(r.supported ? (v ? '已開啟開機自動啟動' : '已關閉開機自動啟動') : '已記錄（僅安裝版生效）', 'ok');
+  const saveCleanup = async (patch) => {
+    const next = { ...settings, cleanup: { ...cleanup, ...patch } };
+    await saveAll(next);
+    if (window.api.cleanup?.getSettings && window.api.cleanup?.saveSettings) {
+      const current = await window.api.cleanup.getSettings();
+      await window.api.cleanup.saveSettings({ ...(current.settings || {}), ...patch });
+    }
   };
 
-  const setWatchEnabled = async (v) => { await saveGeneral({ watchEnabled: v }); await window.api.restartMonitor(); toast(v ? '已啟用檔案監控' : '已停用檔案監控', 'ok'); };
+  const saveGuard = async (patch) => {
+    const nextGuard = { ...guard, ...patch };
+    const next = { ...settings, healthGuard: nextGuard };
+    setSettings(next);
+    const result = await window.api.saveHealthGuard(nextGuard);
+    toast(result.ok ? '健康守護設定已更新' : result.error || '儲存失敗', result.ok ? 'ok' : 'error');
+  };
+
+  const toggleAutoLaunch = async (enabled) => {
+    const result = await window.api.setAutoLaunch(enabled);
+    if (result?.ok || result?.supported) await saveGeneral({ autoLaunch: enabled });
+    toast(result.supported ? (enabled ? '已啟用開機自動啟動' : '已停用開機自動啟動') : '此環境不支援開機自動啟動', result.supported ? 'ok' : 'warn');
+  };
+
+  const setWatchEnabled = async (enabled) => {
+    await saveGeneral({ watchEnabled: enabled });
+    await window.api.restartMonitor();
+    toast(enabled ? '資料夾監控已啟用' : '資料夾監控已停用', 'ok');
+  };
 
   const pickInto = async (key, type = 'folder') => {
-    const r = await window.api.pickPath({ type, title: '選擇路徑' });
-    if (r.ok) { await saveGeneral({ [key]: r.path }); await window.api.restartMonitor(); }
+    const result = await window.api.pickPath({ type, title: '選擇路徑' });
+    if (result.ok) {
+      await saveGeneral({ [key]: result.path });
+      await window.api.restartMonitor();
+      toast('路徑已更新', 'ok');
+    }
   };
 
-  const addWatchFolder = async () => {
-    const r = await window.api.pickPath({ type: 'folder', title: '選擇監控資料夾' });
-    if (r.ok) { await saveGeneral({ watchFolders: [...(g.watchFolders || []), r.path] }); await window.api.restartMonitor(); }
-  };
-  const removeWatchFolder = async (i) => {
-    await saveGeneral({ watchFolders: (g.watchFolders || []).filter((_, idx) => idx !== i) });
-    await window.api.restartMonitor();
+  const exportSettings = async () => {
+    const result = await window.api.exportSettings();
+    if (result.ok) toast(`已匯出設定：${result.path}`, 'ok');
+    else if (!result.canceled) toast(result.error || '匯出失敗', 'error');
   };
 
-  const exportSettings = async () => { const r = await window.api.exportSettings(); if (r.ok) toast(`已匯出：${r.path}`, 'ok'); else if (!r.canceled) toast(r.error || '匯出失敗', 'error'); };
-  const importSettings = async () => { const r = await window.api.importSettings(); if (r.ok) { toast('已匯入設定', 'ok'); load(); } else if (!r.canceled) toast(r.error || '匯入失敗', 'error'); };
-  const resetSettings = async () => { setConfirmReset(false); const r = await window.api.resetSettings(); if (r.ok) { toast('已重設為預設值', 'ok'); load(); } else toast(r.error || '重設失敗', 'error'); };
+  const importSettings = async () => {
+    const result = await window.api.importSettings();
+    if (result.ok) {
+      toast('設定已匯入', 'ok');
+      load();
+    } else if (!result.canceled) {
+      toast(result.error || '匯入失敗', 'error');
+    }
+  };
 
-  if (!g) return <div className="loading-block"><span className="spinner" /> 載入中…</div>;
+  const resetSettings = async () => {
+    setConfirmReset(false);
+    const result = await window.api.resetSettings();
+    toast(result.ok ? '設定已重置' : result.error || '重置失敗', result.ok ? 'ok' : 'error');
+    if (result.ok) load();
+  };
+
+  if (!settings) {
+    return <div className="loading-block"><span className="spinner" />載入設定...</div>;
+  }
 
   return (
     <div>
-      <h1 className="page-title">設定中心</h1>
-      <p className="page-subtitle">調整一般、資料夾、外觀、自動化與進階選項。</p>
+      <PageHeader
+        eyebrow="PREFERENCES"
+        title="設定中心"
+        description="管理路徑、開機喚醒、背景守護、自動化與備份還原。"
+        actions={<StatusBadge tone={general.watchEnabled !== false ? 'ok' : 'warn'}>{general.watchEnabled !== false ? '監控啟用' : '監控停用'}</StatusBadge>}
+      />
 
-      <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        {/* category nav */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
-          {CATEGORIES.map((c) => (
-            <button key={c.key} className={`nav-item ${cat === c.key ? 'active' : ''}`} onClick={() => setCat(c.key)}>
-              <span className="icon">{c.icon}</span>{c.label}
+      <div className="settings-layout">
+        <div className="settings-nav">
+          {CATEGORIES.map((item) => (
+            <button key={item.key} className={`nav-item ${category === item.key ? 'active' : ''}`} onClick={() => setCategory(item.key)} type="button">
+              <span className="icon">{item.icon}</span>
+              <span>{item.label}</span>
             </button>
           ))}
         </div>
 
-        <div style={{ flex: 1, minWidth: 320 }}>
-          {cat === 'general' && (
-            <Card title="General">
-              <Row label="開機自動啟動" desc={autoLaunchSupported ? '登入時自動啟動並縮到系統匣' : '僅安裝版生效；開發模式不註冊'}>
-                <Toggle checked={g.autoLaunch !== false} onChange={toggleAutoLaunch} />
+        <div className="settings-content">
+          {category === 'general' ? (
+            <Card title="一般">
+              <Row label="桌面通知" desc="用於健康守護、自動化、清理建議與更新提醒。">
+                <Toggle checked={general.notifications !== false} onChange={(enabled) => saveGeneral({ notifications: enabled })} />
               </Row>
-              <Row label="關閉視窗時縮到系統匣" desc="關閉視窗不結束程式，改為縮到 tray">
-                <Toggle checked={g.minimizeToTray !== false} onChange={(v) => saveGeneral({ minimizeToTray: v })} />
-              </Row>
-              <Row label="啟動時最小化" desc="啟動後不顯示視窗，直接縮到 tray">
-                <Toggle checked={!!g.startMinimized} onChange={(v) => saveGeneral({ startMinimized: v })} />
-              </Row>
-              <Row label="啟用通知" desc="偵測到新檔案 / 規則觸發時顯示桌面通知">
-                <Toggle checked={g.notifications !== false} onChange={(v) => saveGeneral({ notifications: v })} />
-              </Row>
-              <Row label="測試通知">
-                <Button size="sm" icon="🔔" onClick={() => window.api.testNotification()}>傳送測試</Button>
-              </Row>
-            </Card>
-          )}
-
-          {cat === 'folders' && (
-            <Card title="Folders">
-              <div style={{ paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
-                <div className="label">Downloads 路徑</div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                  <input style={inp} value={g.downloadsPath || ''} placeholder="留空 = 自動偵測" onChange={(e) => setG({ ...g, downloadsPath: e.target.value })} onBlur={(e) => saveGeneral({ downloadsPath: e.target.value })} />
-                  <Button size="sm" icon="🧭" onClick={async () => { const r = await window.api.detectDownloads(); if (r.ok) { await saveGeneral({ downloadsPath: r.path }); toast(`已偵測：${r.path}`, 'ok'); } else toast(r.error, 'error'); }}>偵測</Button>
-                  <Button size="sm" icon="📁" onClick={() => pickInto('downloadsPath')}>選擇</Button>
-                </div>
-              </div>
-              <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
-                <div className="label">Screenshots 路徑</div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                  <input style={inp} value={g.screenshotsPath || ''} placeholder="留空 = ~/Pictures/Screenshots" onChange={(e) => setG({ ...g, screenshotsPath: e.target.value })} onBlur={(e) => saveGeneral({ screenshotsPath: e.target.value })} />
-                  <Button size="sm" icon="📁" onClick={() => pickInto('screenshotsPath')}>選擇</Button>
-                </div>
-              </div>
-              <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
-                <div className="label">VS Code 路徑</div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                  <input style={inp} value={g.vscodePath || ''} placeholder="留空 = 自動偵測" onChange={(e) => setG({ ...g, vscodePath: e.target.value })} onBlur={(e) => saveGeneral({ vscodePath: e.target.value })} />
-                  <Button size="sm" icon="🔍" onClick={async () => { const r = await window.api.detectVSCode(); if (r.ok) { await saveGeneral({ vscodePath: r.path }); toast(`已偵測：${r.path}`, 'ok'); } else toast(r.error, 'error'); }}>偵測</Button>
-                  <Button size="sm" icon="📁" onClick={() => pickInto('vscodePath', 'file')}>選擇</Button>
-                  <Button size="sm" icon="🚀" onClick={async () => { const r = await window.api.testVSCode(); toast(r.ok ? `已開啟 VS Code` : r.error, r.ok ? 'ok' : 'error'); }}>測試</Button>
-                </div>
-              </div>
-              <div style={{ paddingTop: 12 }}>
-                <div className="row-between">
-                  <div className="label">自訂監控資料夾</div>
-                  <Button size="sm" icon="➕" onClick={addWatchFolder}>新增</Button>
-                </div>
-                {(g.watchFolders || []).length === 0 ? (
-                  <p className="muted" style={{ fontSize: 12 }}>尚未新增。Downloads 與 Screenshots 預設會被監控。</p>
-                ) : (
-                  (g.watchFolders || []).map((f, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center' }}>
-                      <span className="path" style={{ flex: 1 }}>{f}</span>
-                      <Button size="sm" variant="ghost" icon="✕" onClick={() => removeWatchFolder(i)} />
-                    </div>
-                  ))
-                )}
-              </div>
-            </Card>
-          )}
-
-          {cat === 'appearance' && (
-            <Card title="Appearance">
-              <Row label="主題" desc="System / Light / Dark">
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {['system', 'light', 'dark'].map((t) => (
-                    <Button key={t} size="sm" variant={theme === t ? 'primary' : 'ghost'} onClick={() => setTheme(t)}>
-                      {t === 'system' ? '系統' : t === 'light' ? '淺色' : '深色'}
+              <Row label="主題">
+                <div className="inline-controls">
+                  {['system', 'light', 'dark'].map((item) => (
+                    <Button key={item} size="sm" variant={theme === item ? 'primary' : 'ghost'} onClick={() => setTheme(item)}>
+                      {item === 'system' ? '系統' : item === 'light' ? '淺色' : '深色'}
                     </Button>
                   ))}
                 </div>
               </Row>
-              <Row label="主題色 Accent">
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  {ACCENTS.map((c) => (
-                    <button key={c} onClick={() => setAccent(c)} title={c}
-                      style={{ width: 22, height: 22, borderRadius: '50%', background: c, border: accent === c ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer' }} />
-                  ))}
-                  <input type="color" value={accent} onChange={(e) => setAccent(e.target.value)} style={{ width: 30, height: 26, background: 'transparent', border: 'none', cursor: 'pointer' }} />
+              <Row label="強調色">
+                <div className="swatch-row">
+                  {ACCENTS.map((color) => <button key={color} className={`swatch ${accent === color ? 'active' : ''}`} onClick={() => setAccent(color)} title={color} style={{ background: color }} type="button" />)}
+                  <input type="color" value={accent} onChange={(event) => setAccent(event.target.value)} />
                 </div>
               </Row>
-              <Row label="精簡模式 Compact" desc="縮小間距，顯示更多內容">
+              <Row label="緊湊模式" desc="降低間距，讓列表與工具頁顯示更多資料。">
                 <Toggle checked={compact} onChange={setCompact} />
               </Row>
+              <Row label="測試通知">
+                <Button size="sm" onClick={() => window.api.testNotification()}>測試</Button>
+              </Row>
             </Card>
-          )}
+          ) : null}
 
-          {cat === 'automation' && (
-            <Card title="Automation">
-              <Row label="啟用檔案監控" desc="監控資料夾、偵測新檔案">
-                <Toggle checked={g.watchEnabled !== false} onChange={setWatchEnabled} />
+          {category === 'paths' ? (
+            <Card title="路徑">
+              <Row label="Downloads 路徑">
+                <div className="inline-controls">
+                  <input style={inputStyle} value={general.downloadsPath || ''} onChange={(event) => saveGeneral({ downloadsPath: event.target.value })} />
+                  <Button size="sm" onClick={async () => {
+                    const result = await window.api.detectDownloads();
+                    if (result.ok) await saveGeneral({ downloadsPath: result.path });
+                  }}>自動偵測</Button>
+                  <Button size="sm" onClick={() => pickInto('downloadsPath')}>選擇</Button>
+                </div>
               </Row>
-              <Row label="啟用自動化規則" desc="新檔案符合條件時自動執行動作">
-                <Toggle checked={g.automationsEnabled !== false} onChange={(v) => saveGeneral({ automationsEnabled: v })} />
+              <Row label="Screenshots 路徑">
+                <div className="inline-controls">
+                  <input style={inputStyle} value={general.screenshotsPath || ''} onChange={(event) => saveGeneral({ screenshotsPath: event.target.value })} />
+                  <Button size="sm" onClick={() => pickInto('screenshotsPath')}>選擇</Button>
+                </div>
               </Row>
-              <Row label="整理前先詢問" desc="按「確認並整理」前彈出確認對話框">
-                <Toggle checked={g.askBeforeOrganizing !== false} onChange={(v) => saveGeneral({ askBeforeOrganizing: v })} />
-              </Row>
-              <Row label="保留操作紀錄" desc="在 Dashboard 顯示最近整理紀錄">
-                <Toggle checked={g.keepHistory !== false} onChange={(v) => saveGeneral({ keepHistory: v })} />
+              <Row label="VS Code 路徑">
+                <div className="inline-controls">
+                  <input style={inputStyle} value={general.vscodePath || ''} onChange={(event) => saveGeneral({ vscodePath: event.target.value })} />
+                  <Button size="sm" onClick={async () => {
+                    const result = await window.api.detectVSCode();
+                    if (result.ok) await saveGeneral({ vscodePath: result.path });
+                    toast(result.ok ? `偵測到 ${result.path}` : result.error, result.ok ? 'ok' : 'error');
+                  }}>自動偵測</Button>
+                  <Button size="sm" onClick={() => pickInto('vscodePath', 'file')}>選擇</Button>
+                </div>
               </Row>
             </Card>
-          )}
+          ) : null}
 
-          {cat === 'advanced' && (
-            <Card title="Advanced">
-              <Row label="匯出設定" desc="將設定存成 JSON 檔">
-                <Button size="sm" icon="⬆️" onClick={exportSettings}>匯出</Button>
+          {category === 'startup' ? (
+            <Card title="開機/喚醒">
+              <Row label="開機自動啟動" desc={autoLaunchSupported ? '登入 Windows 後自動啟動 PC Life Assistant。' : '目前環境不支援此設定。'}>
+                <Toggle checked={general.autoLaunch !== false} onChange={toggleAutoLaunch} />
               </Row>
-              <Row label="匯入設定" desc="從 JSON 檔還原設定">
-                <Button size="sm" icon="⬇️" onClick={importSettings}>匯入</Button>
+              <Row label="開機後顯示介面" desc="登入或重開機後直接跳出主畫面。">
+                <Toggle checked={general.showOnStartup !== false} onChange={(enabled) => saveGeneral({ showOnStartup: enabled, startMinimized: !enabled })} />
               </Row>
-              <Row label="重設設定" desc="還原所有設定為預設值">
-                <Button size="sm" variant="danger" icon="♻️" onClick={() => setConfirmReset(true)}>重設</Button>
+              <Row label="螢幕/睡眠恢復後顯示介面" desc="電腦喚醒、解鎖或從閒置回到使用時顯示每日工作台。">
+                <Toggle checked={general.showOnResume !== false} onChange={(enabled) => saveGeneral({ showOnResume: enabled })} />
               </Row>
-              <Row label="開啟記錄資料夾" desc="查看 app.log">
-                <Button size="sm" icon="📜" onClick={() => window.api.openLogs()}>開啟 Logs</Button>
-              </Row>
-              <Row label="開啟設定檔" desc={configPath}>
-                <Button size="sm" icon="📂" onClick={() => window.api.openSettingsFile()}>開啟</Button>
+              <Row label="關閉視窗時縮到系統匣">
+                <Toggle checked={general.minimizeToTray !== false} onChange={(enabled) => saveGeneral({ minimizeToTray: enabled })} />
               </Row>
             </Card>
-          )}
+          ) : null}
+
+          {category === 'guard' ? (
+            <Card title="背景健康守護">
+              <Row label="啟用健康守護" desc="定期檢查溫度、RAM 與磁碟容量，超過門檻會通知。">
+                <Toggle checked={guard.enabled !== false} onChange={(enabled) => saveGuard({ enabled })} />
+              </Row>
+              <Row label="檢查間隔（分鐘）"><input style={inputStyle} type="number" min="1" value={guard.intervalMinutes || 5} onChange={(event) => saveGuard({ intervalMinutes: Number(event.target.value) })} /></Row>
+              <Row label="通知冷卻（分鐘）"><input style={inputStyle} type="number" min="5" value={guard.cooldownMinutes || 30} onChange={(event) => saveGuard({ cooldownMinutes: Number(event.target.value) })} /></Row>
+              <Row label="CPU 溫度警戒（°C）"><input style={inputStyle} type="number" value={guard.cpuTempC || 85} onChange={(event) => saveGuard({ cpuTempC: Number(event.target.value) })} /></Row>
+              <Row label="GPU 溫度警戒（°C）"><input style={inputStyle} type="number" value={guard.gpuTempC || 85} onChange={(event) => saveGuard({ gpuTempC: Number(event.target.value) })} /></Row>
+              <Row label="RAM 使用率警戒（%）"><input style={inputStyle} type="number" value={guard.ramPercent || 85} onChange={(event) => saveGuard({ ramPercent: Number(event.target.value) })} /></Row>
+              <Row label="磁碟剩餘容量警戒（GB）"><input style={inputStyle} type="number" value={guard.diskFreeGb || 50} onChange={(event) => saveGuard({ diskFreeGb: Number(event.target.value) })} /></Row>
+              <Row label="立即檢查">
+                <Button size="sm" onClick={async () => {
+                  const result = await window.api.checkHealthGuardNow();
+                  toast(result.ok ? `檢查完成，觸發 ${result.fired?.length || 0} 個通知` : result.error || '檢查失敗', result.ok ? 'ok' : 'error');
+                }}>執行</Button>
+              </Row>
+            </Card>
+          ) : null}
+
+          {category === 'cleanup' ? (
+            <Card title="Clean Center">
+              <Row label="安全模式" desc="保守清理，避免近期暫存、Installer、Driver、Windows Update 相關檔案。">
+                <Toggle checked={cleanup.safeMode !== false} onChange={(enabled) => saveCleanup({ safeMode: enabled })} />
+              </Row>
+              <Row label="清理前顯示報告">
+                <Toggle checked={cleanup.showCleanupReport !== false} onChange={(enabled) => saveCleanup({ showCleanupReport: enabled })} />
+              </Row>
+              <Row label="寫入詳細紀錄">
+                <Toggle checked={cleanup.writeDetailedLog !== false} onChange={(enabled) => saveCleanup({ writeDetailedLog: enabled })} />
+              </Row>
+            </Card>
+          ) : null}
+
+          {category === 'automation' ? (
+            <Card title="自動化">
+              <Row label="資料夾監控">
+                <Toggle checked={general.watchEnabled !== false} onChange={setWatchEnabled} />
+              </Row>
+              <Row label="啟用自動化規則">
+                <Toggle checked={general.automationsEnabled !== false} onChange={(enabled) => saveGeneral({ automationsEnabled: enabled })} />
+              </Row>
+              <Row label="保留操作歷史">
+                <Toggle checked={general.keepHistory !== false} onChange={(enabled) => saveGeneral({ keepHistory: enabled })} />
+              </Row>
+            </Card>
+          ) : null}
+
+          {category === 'backup' ? (
+            <Card title="備份/還原">
+              <Row label="匯出設定"><Button size="sm" onClick={exportSettings}>匯出</Button></Row>
+              <Row label="匯入設定"><Button size="sm" onClick={importSettings}>匯入</Button></Row>
+              <Row label="重置設定"><Button size="sm" variant="danger" onClick={() => setConfirmReset(true)}>重置</Button></Row>
+              <Row label="開啟 Logs"><Button size="sm" onClick={() => window.api.openLogs()}>開啟</Button></Row>
+              <Row label="設定檔位置" desc={configPath}><Button size="sm" onClick={() => window.api.openSettingsFile()}>開啟設定檔</Button></Row>
+            </Card>
+          ) : null}
         </div>
       </div>
 
       <Dialog
         open={confirmReset}
-        title="重設所有設定"
-        message="這會把所有設定還原成預設值（不影響你的檔案）。確定要繼續嗎？"
-        confirmLabel="重設"
+        title="重置設定"
+        message="這會把 App 設定還原為預設值，但不會刪除你的檔案。"
+        confirmLabel="重置"
+        cancelLabel="取消"
         danger
         onConfirm={resetSettings}
         onCancel={() => setConfirmReset(false)}

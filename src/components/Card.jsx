@@ -1,8 +1,8 @@
 import React from 'react';
 
-export default function Card({ title, icon, actions, children, style }) {
+export default function Card({ title, icon, actions, children, style, className = '' }) {
   return (
-    <div className="card" style={style}>
+    <div className={`card ${className}`.trim()} style={style}>
       {title || actions ? (
         <div className="row-between" style={{ marginBottom: 12 }}>
           <div className="section-title" style={{ margin: 0 }}>

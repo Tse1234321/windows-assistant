@@ -5,16 +5,12 @@ const path = require('path');
 const { shell } = require('electron');
 const notificationService = require('./notificationService');
 const fileOrganizerService = require('./fileOrganizerService');
+const screenshotService = require('./screenshotService');
+const cleanupService = require('./cleanupService');
+const { classifyFile } = require('./fileClassifier');
 
-/**
- * Automation rules service.
- *
- * Rule shape:
- *   { id, name, enabled, condition: { type, value, folder }, action: { type, target },
- *     createdAt, updatedAt }
- * condition.type: 'extension' | 'sizeGreaterThan' (MB) | 'newFileInFolder'
- * action.type:    'move' (target folder) | 'notify' | 'openFolder'
- */
+const scheduledState = new Map();
+let scheduleTimer = null;
 
 function list(config) {
   return config && Array.isArray(config.automations) ? config.automations : [];
@@ -25,48 +21,185 @@ function matches(condition, info) {
   switch (condition.type) {
     case 'extension': {
       const want = String(condition.value || '').trim().toLowerCase();
+      if (!want) return false;
       const norm = want.startsWith('.') ? want : `.${want}`;
       return !!info.ext && info.ext.toLowerCase() === norm;
     }
     case 'sizeGreaterThan': {
       const mb = Number(condition.value || 0);
-      return info.size > mb * 1024 * 1024;
+      return Number(info.size || 0) > mb * 1024 * 1024;
     }
     case 'newFileInFolder':
-      return true; // folder scoping handled by caller
+      return true;
+    case 'schedule':
+      return true;
     default:
       return false;
   }
 }
 
-async function runAction(action, info) {
+async function organizeFileByType(action, info) {
+  const saved = await fileOrganizerService.getSettings();
+  const rootPath = action && action.rootPath ? action.rootPath : info.folder;
+  const settings = {
+    ...(saved.settings || {}),
+    folderPath: rootPath,
+    subdivideDocuments: action && action.subdivideDocuments === false ? false : true,
+  };
+  const classification = classifyFile(info.file, settings);
+  const targetDir = path.join(rootPath, ...classification.targetSegments);
+  const res = await fileOrganizerService.organize([
+    {
+      name: info.file,
+      sourcePath: info.path,
+      targetDir,
+      category: classification.category,
+      categoryPath: classification.categoryPath,
+      rootPath,
+    },
+  ], settings);
+  const first = res.results && res.results[0];
+  return {
+    ok: res.ok,
+    moved: res.moved || 0,
+    copied: res.copied || 0,
+    skipped: res.skipped || 0,
+    target: first && first.to,
+    error: res.historyError || (first && first.error),
+  };
+}
+
+async function organizeScreenshotByDate(config, action, info) {
+  const settings = screenshotService.getSettings(config, action && action.settings ? action.settings : {});
+  const scan = await screenshotService.scanScreenshots(info.folder, {
+    settings: {
+      ...settings,
+      includeSubfolders: false,
+      skipAlreadyOrganized: true,
+    },
+    keywordMap: screenshotService.getKeywordMap(config),
+  });
+  if (!scan.ok) return { ok: false, error: scan.error };
+
+  const sourceKey = path.resolve(info.path).toLowerCase();
+  const item = (scan.items || []).find((candidate) => path.resolve(candidate.sourcePath).toLowerCase() === sourceKey);
+  if (!item) {
+    return {
+      ok: true,
+      skipped: 1,
+      message: 'This screenshot is already organized or is not part of the scan result.',
+    };
+  }
+
+  const res = await screenshotService.organizeScreenshots([item], { settings });
+  const first = res.results && res.results[0];
+  return {
+    ok: res.ok,
+    moved: res.moved || 0,
+    skipped: res.skipped || 0,
+    target: first && first.to,
+    error: res.logError || (first && first.error),
+  };
+}
+
+async function runCleanupScan(type, notifyTitle) {
+  const res = await cleanupService.runAutomationAction(type);
+  const size = (res.items || []).reduce((sum, item) => sum + Number(item.size || 0), 0);
+  notificationService.notify('Clean Center', `${notifyTitle}: ${(res.items || []).length} item(s), ${(size / 1024 / 1024).toFixed(1)} MB.`);
+  return { ok: res.ok, count: (res.items || []).length, size };
+}
+
+async function runAction(action, info, config = {}) {
   try {
     switch (action && action.type) {
       case 'move': {
-        if (!action.target) return { ok: false, error: '未設定目標資料夾' };
-        fs.mkdirSync(action.target, { recursive: true });
-        const res = fileOrganizerService.organize([
+        if (!action.target) return { ok: false, error: 'Target folder is not set.' };
+        await fs.promises.mkdir(action.target, { recursive: true });
+        const res = await fileOrganizerService.organize([
           { name: info.file, sourcePath: info.path, targetDir: action.target, category: '' },
         ]);
         return { ok: res.ok, error: res.results && res.results[0] && res.results[0].error };
       }
       case 'notify':
-        notificationService.notify('自動化規則', `${info.file} 觸發了自動化規則`);
+        notificationService.notify('Automation triggered', `${info.file} matched an automation rule.`);
         return { ok: true };
       case 'openFolder':
         await shell.openPath(info.folder);
         return { ok: true };
+      case 'organizeFileByType':
+        return organizeFileByType(action, info);
+      case 'organizeScreenshotByDate':
+        return organizeScreenshotByDate(config, action, info);
+      case 'cleanupScanTemp':
+        return runCleanupScan('scanTemp', 'Temp scan');
+      case 'cleanupScanCache':
+        return runCleanupScan('scanCache', 'Browser cache scan');
+      case 'cleanupScanLargeFiles': {
+        const res = await cleanupService.runAutomationAction('scanLargeFiles');
+        notificationService.notify('Clean Center', `Large file analysis found ${(res.items || []).length} file(s).`);
+        return { ok: res.ok, count: (res.items || []).length };
+      }
+      case 'cleanupScanDuplicates': {
+        const res = await cleanupService.runAutomationAction('scanDuplicateFiles');
+        notificationService.notify('Clean Center', `Duplicate check found ${(res.groups || []).length} group(s).`);
+        return { ok: res.ok, count: (res.groups || []).length };
+      }
+      case 'cleanupReminder':
+        notificationService.notify('Clean Center', 'Please review Clean Center recommendations.');
+        return { ok: true };
+      case 'cleanupScanSafe': {
+        const res = await cleanupService.scan({ settings: { scanDuplicateFiles: false } });
+        const safe = (res.items || []).filter((item) => item.selectedDefault);
+        const size = safe.reduce((sum, item) => sum + Number(item.size || 0), 0);
+        notificationService.notify('Clean Center 安全掃描', `找到 ${safe.length} 個可安全清理項目，約 ${(size / 1024 / 1024).toFixed(1)} MB。`, {
+          level: safe.length ? 'info' : 'ok',
+          source: 'automation',
+          action: 'cleanup',
+        });
+        return { ok: res.ok, count: safe.length, size };
+      }
+      case 'projectScanReminder':
+        notificationService.notify('Project Hub', '建議重新掃描專案根目錄，確認 Git 狀態與常用專案。', {
+          level: 'info',
+          source: 'automation',
+          action: 'projects',
+        });
+        return { ok: true };
+      case 'healthGuardCheck':
+        notificationService.notify('健康守護', '排程健康檢查已觸發，請到每日工作台查看最新狀態。', {
+          level: 'info',
+          source: 'automation',
+          action: 'dashboard',
+        });
+        return { ok: true };
+      case 'cleanupNotifyTempOver': {
+        const thresholdMb = Number(action.target || action.thresholdMb || 1024);
+        const res = await cleanupService.runAutomationAction('checkTempSize', { thresholdBytes: thresholdMb * 1024 * 1024 });
+        if (res.exceeded) notificationService.notify('Clean Center', `Temp files exceeded ${thresholdMb} MB. Consider running Clean Center.`);
+        return res;
+      }
+      case 'cleanupNotifyRecycleOver': {
+        const thresholdGb = Number(action.target || action.thresholdGb || 2);
+        const res = await cleanupService.runAutomationAction('checkRecycleBinSize', { thresholdBytes: thresholdGb * 1024 * 1024 * 1024 });
+        if (res.exceeded) notificationService.notify('Clean Center', `Recycle Bin exceeded ${thresholdGb} GB. Consider reviewing it.`);
+        return res;
+      }
+      case 'cleanupNotifyDownloadsCount': {
+        const thresholdCount = Number(action.target || action.thresholdCount || 200);
+        const res = await cleanupService.runAutomationAction('checkDownloadsCount', { thresholdCount });
+        if (res.exceeded) notificationService.notify('Clean Center', `Downloads has more than ${thresholdCount} files. Consider organizing it.`);
+        return res;
+      }
       default:
-        return { ok: false, error: '未知的動作類型' };
+        return { ok: false, error: 'Unsupported automation action.' };
     }
   } catch (err) {
     return { ok: false, error: err.message };
   }
 }
 
-/** Run all enabled rules against a newly-detected file. Returns the rules that fired. */
 async function handleNewFile(config, info) {
-  const rules = list(config).filter((r) => r && r.enabled !== false);
+  const rules = list(config).filter((rule) => rule && rule.enabled !== false);
   const fired = [];
   for (const rule of rules) {
     const cond = rule.condition || {};
@@ -79,11 +212,92 @@ async function handleNewFile(config, info) {
     }
     if (matches(cond, info)) {
       // eslint-disable-next-line no-await-in-loop
-      const result = await runAction(rule.action || {}, info);
+      const result = await runAction(rule.action || {}, info, config);
       fired.push({ rule: rule.name, ...result });
     }
   }
   return fired;
 }
 
-module.exports = { list, matches, runAction, handleNewFile };
+function minutesSinceStartOfDay(date) {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function parseTimeMinutes(value) {
+  const match = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return 0;
+  return Math.max(0, Math.min(23, Number(match[1]))) * 60 + Math.max(0, Math.min(59, Number(match[2])));
+}
+
+function scheduleDue(rule, now = new Date()) {
+  const condition = rule.condition || {};
+  if (condition.type !== 'schedule') return false;
+  const key = rule.id || rule.name;
+  const last = scheduledState.get(key) || 0;
+  const intervalMs = Math.max(1, Number(condition.everyMinutes || 0)) * 60 * 1000;
+  const mode = condition.scheduleMode || 'interval';
+
+  if (mode === 'interval') {
+    return Date.now() - last >= intervalMs;
+  }
+
+  const targetMinutes = parseTimeMinutes(condition.time || '09:00');
+  const currentMinutes = minutesSinceStartOfDay(now);
+  const withinWindow = currentMinutes >= targetMinutes && currentMinutes <= targetMinutes + 1;
+  if (!withinWindow) return false;
+
+  if (mode === 'weekly') {
+    const day = Number(condition.dayOfWeek || 1);
+    if (now.getDay() !== day) return false;
+  }
+
+  return Date.now() - last >= 22 * 60 * 60 * 1000;
+}
+
+async function handleSchedules(config) {
+  const rules = list(config).filter((rule) => rule && rule.enabled !== false && rule.condition && rule.condition.type === 'schedule');
+  const fired = [];
+  for (const rule of rules) {
+    if (!scheduleDue(rule)) continue;
+    const key = rule.id || rule.name;
+    scheduledState.set(key, Date.now());
+    const result = await runAction(rule.action || {}, {
+      file: '',
+      path: '',
+      folder: '',
+      ext: '',
+      size: 0,
+      scheduled: true,
+    }, config);
+    fired.push({ rule: rule.name, ...result });
+  }
+  return fired;
+}
+
+function startScheduler(getConfig, onFired) {
+  stopScheduler();
+  const tick = async () => {
+    const config = typeof getConfig === 'function' ? getConfig() : {};
+    if (config.general && config.general.automationsEnabled === false) return;
+    const fired = await handleSchedules(config);
+    if (fired.length && typeof onFired === 'function') onFired(fired);
+  };
+  scheduleTimer = setInterval(() => tick().catch(() => {}), 60 * 1000);
+  setTimeout(() => tick().catch(() => {}), 3000);
+  return { ok: true };
+}
+
+function stopScheduler() {
+  if (scheduleTimer) clearInterval(scheduleTimer);
+  scheduleTimer = null;
+}
+
+module.exports = {
+  list,
+  matches,
+  runAction,
+  handleNewFile,
+  handleSchedules,
+  startScheduler,
+  stopScheduler,
+};

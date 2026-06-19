@@ -1,62 +1,69 @@
-/* Design tokens — Fluent-inspired. Theme is switched via [data-theme] on <html>. */
+/* Product UI tokens. Theme is switched via [data-theme] on <html>. */
 
 :root,
 :root[data-theme='dark'] {
-  --bg: #0f1115;
-  --bg-elevated: #171a21;
-  --bg-card: #171a21;
-  --surface-hover: #1f2430;
-  --border: #2a2f3a;
-  --text: #f4f7fb;
-  --text-dim: #9aa4b2;
-  --accent: #4f8cff;
-  --accent-strong: #4f8cff;
+  --bg: #0b0f14;
+  --bg-elevated: #121821;
+  --bg-card: #151c26;
+  --surface-hover: #1b2532;
+  --surface-pressed: #223044;
+  --border: #263241;
+  --border-strong: #354459;
+  --text: #eef4fb;
+  --text-dim: #9aa8b8;
+  --text-faint: #6f7e8f;
+  --accent: #2f81f7;
+  --accent-strong: #1f6feb;
+  --accent-soft: rgba(47, 129, 247, 0.16);
   --accent-contrast: #ffffff;
-  --ok: #22c55e;
-  --warn: #f59e0b;
-  --danger: #ef4444;
+  --ok: #2fbf71;
+  --warn: #e8a23a;
+  --danger: #ef5b5b;
 
-  --input-bg: #0b1220;
-  --input-text: #e6edf6;
+  --input-bg: #0d141d;
+  --input-text: #eef4fb;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.28);
-  --overlay: rgba(2, 6, 23, 0.6);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow: 0 16px 42px rgba(0, 0, 0, 0.28);
+  --overlay: rgba(5, 10, 18, 0.72);
 
-  --sidebar-w: 232px;
-  --topbar-h: 56px;
-  --radius-sm: 8px;
-  --radius: 12px;
-  --radius-lg: 16px;
+  --sidebar-w: 248px;
+  --topbar-h: 60px;
+  --radius-sm: 7px;
+  --radius: 8px;
+  --radius-lg: 10px;
   --space: 16px;
   --transition: 0.16s ease;
 }
 
 :root[data-theme='light'] {
-  --bg: #f5f7fb;
+  --bg: #f4f7fb;
   --bg-elevated: #ffffff;
   --bg-card: #ffffff;
-  --surface-hover: #eef2f8;
-  --border: #e4e8f0;
-  --text: #111827;
-  --text-dim: #6b7280;
+  --surface-hover: #eef3f9;
+  --surface-pressed: #e6edf7;
+  --border: #dfe7f0;
+  --border-strong: #c8d5e3;
+  --text: #182230;
+  --text-dim: #64748b;
+  --text-faint: #94a3b8;
   --accent: #2563eb;
-  --accent-strong: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: rgba(37, 99, 235, 0.11);
   --accent-contrast: #ffffff;
-  --ok: #16a34a;
-  --warn: #d97706;
+  --ok: #169b5b;
+  --warn: #b97812;
   --danger: #dc2626;
 
-  --input-bg: #f3f5fa;
-  --input-text: #111827;
+  --input-bg: #f7f9fc;
+  --input-text: #182230;
 
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 10px 30px rgba(16, 24, 40, 0.08);
-  --overlay: rgba(17, 24, 39, 0.45);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow: 0 18px 44px rgba(15, 23, 42, 0.09);
+  --overlay: rgba(15, 23, 42, 0.46);
 }
 
-/* Compact mode tightens vertical rhythm. */
 :root[data-compact='true'] {
   --space: 11px;
-  --topbar-h: 48px;
+  --topbar-h: 52px;
 }

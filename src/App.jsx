@@ -13,6 +13,12 @@ import Screenshots from './pages/Screenshots.jsx';
 import Rules from './pages/Rules.jsx';
 import HealthMonitor from './pages/HealthMonitor.jsx';
 import Settings from './pages/Settings.jsx';
+import CleanCenter from './pages/CleanCenter.jsx';
+import SetupWizard from './pages/SetupWizard.jsx';
+import WorkspaceTemplates from './pages/WorkspaceTemplates.jsx';
+import NotificationCenter from './pages/NotificationCenter.jsx';
+import ActivityHistory from './pages/ActivityHistory.jsx';
+import CommandCheatsheet from './pages/CommandCheatsheet.jsx';
 
 function Shell() {
   const [page, setPage] = useState('dashboard');
@@ -38,6 +44,13 @@ function Shell() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!window.api?.getSetupStatus) return;
+    window.api.getSetupStatus().then((result) => {
+      if (result?.ok && !result.complete) setPage('setup');
+    }).catch(() => {});
+  }, []);
+
   // Ctrl+K and Ctrl+Shift+P open the command palette (renderer-side, when focused).
   useEffect(() => {
     const onKey = (e) => {
@@ -55,15 +68,21 @@ function Shell() {
 
   const renderPage = () => {
     switch (page) {
-      case 'projects': return <Projects />;
+      case 'projects': return <Projects onNavigate={navigate} />;
       case 'modes': return <Modes externalResult={externalModeResult} />;
       case 'files':
       case 'downloads': return <FileOrganizer />;
+      case 'cleanup': return <CleanCenter />;
+      case 'setup': return <SetupWizard onNavigate={navigate} />;
+      case 'workspaceTemplates': return <WorkspaceTemplates onNavigate={navigate} />;
+      case 'cheatsheet': return <CommandCheatsheet />;
       case 'automations': return <Automations />;
-      case 'monitor': return <SystemMonitor />;
+      case 'monitor': return <SystemMonitor onNavigate={navigate} />;
       case 'screenshots': return <Screenshots />;
       case 'rules': return <Rules />;
       case 'health': return <HealthMonitor />;
+      case 'notifications': return <NotificationCenter onNavigate={navigate} />;
+      case 'history': return <ActivityHistory />;
       case 'settings': return <Settings />;
       case 'dashboard':
       default: return <Dashboard onNavigate={navigate} />;

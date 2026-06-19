@@ -1,53 +1,53 @@
 'use strict';
 
 const fs = require('fs');
-const path = require('path');
 const os = require('os');
+const path = require('path');
 const { execFile } = require('child_process');
+const { app } = require('electron');
+const {
+  CATEGORY_RULES,
+  getCategoryRule,
+  getDocumentSubRule,
+  isTopLevelCategoryFolderName,
+  isDocumentSubcategoryFolderName,
+} = require('./organizerRules');
+const { categoryForExt, classifyFile, isHiddenLikeName } = require('./fileClassifier');
 
-/**
- * Downloads file organizer service.
- *
- * Safety rules (hard requirements):
- *  - Never deletes a file.
- *  - Never moves anything during a scan (preview only).
- *  - Files are only moved after the user explicitly confirms.
- *  - On name collision, appends an incrementing suffix, e.g. file(1).pdf.
- */
+const DEFAULT_DOWNLOAD_SETTINGS = {
+  folderPath: '',
+  includeSubfolders: false,
+  skipCategoryFolders: true,
+  mode: 'move',
+  conflictStrategy: 'rename',
+  showFullPaths: false,
+  subdivideDocuments: true,
+  includeHiddenFiles: false,
+};
 
-const CATEGORY_RULES = [
-  { category: 'Images', exts: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp'] },
-  { category: 'Documents', exts: ['.pdf', '.doc', '.docx', '.txt', '.md', '.xlsx', '.pptx', '.ppt', '.rtf', '.odt'] },
-  { category: 'Archives', exts: ['.zip', '.rar', '.7z', '.tar', '.gz'] },
-  { category: 'Installers', exts: ['.exe', '.msi'] },
-  { category: 'Videos', exts: ['.mp4', '.mov', '.avi', '.mkv'] },
-  { category: 'Audio', exts: ['.mp3', '.wav', '.flac'] },
-  { category: 'Code', exts: ['.js', '.jsx', '.ts', '.tsx', '.json', '.html', '.css', '.py', '.cpp', '.h', '.c', '.v'] },
-];
-
-const OTHERS_CATEGORY = 'Others';
-// Folders we created ourselves – skip them so we don't re-organise category folders.
-const CATEGORY_FOLDER_NAMES = new Set([
-  ...CATEGORY_RULES.map((r) => r.category),
-  OTHERS_CATEGORY,
-]);
-
-function getDownloadsPath(override) {
-  if (override && override.trim()) return override;
-  return path.join(os.homedir(), 'Downloads');
-}
-
-// Cache the detected path so we don't run `reg query` on every status refresh.
 let cachedDetected = null;
 
-function expandEnv(p) {
-  return p.replace(/%([^%]+)%/g, (_, name) => process.env[name] || `%${name}%`);
+function userDataPath(fileName) {
+  try {
+    if (app && app.isReady()) return path.join(app.getPath('userData'), fileName);
+  } catch (_) {
+    /* fall through */
+  }
+  return path.join(os.tmpdir(), 'pc-life-assistant', fileName);
 }
 
-/**
- * Read the real "Downloads" known-folder path from the Windows registry.
- * This correctly resolves OneDrive-redirected Downloads folders.
- */
+function settingsPath() {
+  return userDataPath('downloads-settings.json');
+}
+
+function historyPath() {
+  return userDataPath('downloads-organize-history.json');
+}
+
+function expandEnv(value) {
+  return String(value || '').replace(/%([^%]+)%/g, (_, name) => process.env[name] || `%${name}%`);
+}
+
 function queryRegistryDownloads() {
   return new Promise((resolve) => {
     if (process.platform !== 'win32') return resolve(null);
@@ -55,215 +55,533 @@ function queryRegistryDownloads() {
     const guid = '{374DE290-123F-4565-9164-39C4925E467B}';
     execFile('reg', ['query', key, '/v', guid], { timeout: 5000, windowsHide: true }, (err, stdout) => {
       if (err || !stdout) return resolve(null);
-      const m = stdout.match(/REG_(?:EXPAND_)?SZ\s+(.+?)\s*$/m);
-      resolve(m ? expandEnv(m[1].trim()) : null);
+      const match = stdout.match(/REG_(?:EXPAND_)?SZ\s+(.+?)\s*$/m);
+      resolve(match ? expandEnv(match[1].trim()) : null);
     });
   });
 }
 
-/**
- * Auto-detect the Downloads folder, including OneDrive-redirected setups.
- * Order: Windows registry known folder → %OneDrive%\Downloads(/下載) →
- *        %USERPROFILE%\Downloads(/下載) → <home>\Downloads(/下載).
- */
+async function pathIsDirectory(target) {
+  try {
+    const stat = await fs.promises.stat(target);
+    return stat.isDirectory();
+  } catch (_) {
+    return false;
+  }
+}
+
+function pathIsDirectorySync(target) {
+  try {
+    return fs.statSync(target).isDirectory();
+  } catch (_) {
+    return false;
+  }
+}
+
 async function detectDownloads() {
   const candidates = [];
   const reg = await queryRegistryDownloads();
   if (reg) candidates.push(reg);
   for (const envName of ['OneDrive', 'OneDriveConsumer', 'OneDriveCommercial', 'USERPROFILE']) {
-    if (process.env[envName]) {
-      candidates.push(path.join(process.env[envName], 'Downloads'));
-      candidates.push(path.join(process.env[envName], '下載'));
-    }
+    if (process.env[envName]) candidates.push(path.join(process.env[envName], 'Downloads'));
+  }
+  try {
+    if (app && app.isReady()) candidates.push(app.getPath('downloads'));
+  } catch (_) {
+    /* ignore */
   }
   candidates.push(path.join(os.homedir(), 'Downloads'));
-  candidates.push(path.join(os.homedir(), '下載'));
 
   const seen = new Set();
-  for (const c of candidates) {
-    if (!c || seen.has(c)) continue;
-    seen.add(c);
-    try {
-      if (fs.existsSync(c) && fs.statSync(c).isDirectory()) {
-        cachedDetected = c;
-        return { ok: true, path: c, candidates: [...seen] };
-      }
-    } catch (_) {
-      /* keep trying */
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const key = candidate.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (await pathIsDirectory(candidate)) {
+      cachedDetected = candidate;
+      return { ok: true, path: candidate, candidates: Array.from(seen) };
     }
   }
-  return { ok: false, error: '找不到 Downloads 資料夾，請手動選擇。', candidates: [...seen] };
+  return { ok: false, path: path.join(os.homedir(), 'Downloads'), error: 'Could not detect Downloads folder.', candidates: Array.from(seen) };
 }
 
-/** Resolve the effective Downloads path: explicit setting → detected → home\Downloads. */
-async function resolveDownloadsPath(override) {
-  if (override && override.trim()) return override;
-  if (cachedDetected) return cachedDetected;
-  const d = await detectDownloads();
-  return d.ok ? d.path : path.join(os.homedir(), 'Downloads');
+async function getDefaultPath() {
+  if (cachedDetected && await pathIsDirectory(cachedDetected)) return { ok: true, path: cachedDetected };
+  return detectDownloads();
 }
 
-function categoryForExt(ext) {
-  const lower = ext.toLowerCase();
-  for (const rule of CATEGORY_RULES) {
-    if (rule.exts.includes(lower)) return rule.category;
+function normalizeSettings(input = {}) {
+  return {
+    ...DEFAULT_DOWNLOAD_SETTINGS,
+    ...input,
+    includeSubfolders: !!input.includeSubfolders,
+    skipCategoryFolders: input.skipCategoryFolders !== false,
+    mode: input.mode === 'copy' ? 'copy' : 'move',
+    conflictStrategy: 'rename',
+    showFullPaths: !!input.showFullPaths,
+    subdivideDocuments: input.subdivideDocuments !== false,
+    includeHiddenFiles: !!input.includeHiddenFiles,
+  };
+}
+
+async function getSettings() {
+  const target = settingsPath();
+  try {
+    const raw = await fs.promises.readFile(target, 'utf-8');
+    return { ok: true, path: target, settings: normalizeSettings(JSON.parse(raw)) };
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      return { ok: false, path: target, settings: { ...DEFAULT_DOWNLOAD_SETTINGS }, error: err.message };
+    }
+    const detected = await getDefaultPath();
+    const settings = normalizeSettings({ ...DEFAULT_DOWNLOAD_SETTINGS, folderPath: detected.path || '' });
+    await saveSettings(settings);
+    return { ok: true, path: target, settings };
   }
-  return OTHERS_CATEGORY;
 }
 
-/**
- * Resolve a non-colliding destination path. If `dir/name.ext` exists,
- * returns `dir/name(1).ext`, `dir/name(2).ext`, ...
- */
+async function saveSettings(settings) {
+  const target = settingsPath();
+  try {
+    const next = normalizeSettings(settings);
+    await fs.promises.mkdir(path.dirname(target), { recursive: true });
+    await fs.promises.writeFile(target, JSON.stringify(next, null, 2), 'utf-8');
+    return { ok: true, path: target, settings: next };
+  } catch (err) {
+    return { ok: false, path: target, error: err.message };
+  }
+}
+
+async function resolveDownloadsPath(override) {
+  if (override && String(override).trim()) return override;
+  const settings = await getSettings();
+  if (settings.ok && settings.settings.folderPath) return settings.settings.folderPath;
+  const detected = await getDefaultPath();
+  return detected.path || path.join(os.homedir(), 'Downloads');
+}
+
+function categoryRule(category) {
+  const parts = String(category || '').split(/[\\/]/);
+  if (parts[0] === 'Documents' && parts[1]) {
+    const subRule = getDocumentSubRule(parts[1]);
+    return {
+      category,
+      label: `Documents/${subRule.label}`,
+      exts: subRule.exts,
+    };
+  }
+  return getCategoryRule(parts[0]);
+}
+
+function isCategoryFolderName(name) {
+  return isTopLevelCategoryFolderName(name);
+}
+
+function relativeParts(rootPath, filePath) {
+  const rel = path.relative(rootPath, filePath);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return [];
+  return rel.split(/[\\/]+/).filter(Boolean);
+}
+
+function isInsideFinalTarget(rootPath, filePath, classification) {
+  const parts = relativeParts(rootPath, filePath);
+  if (parts.length <= classification.targetSegments.length) return false;
+  return classification.targetSegments.every((segment, idx) => {
+    return String(parts[idx] || '').toLowerCase() === String(segment).toLowerCase();
+  });
+}
+
+function skipReasonForCategoryFolder(rootPath, filePath, classification, settings) {
+  if (!settings.skipCategoryFolders) return '';
+  const parts = relativeParts(rootPath, filePath);
+  if (parts.length < 2 || !isCategoryFolderName(parts[0])) return '';
+
+  if (isInsideFinalTarget(rootPath, filePath, classification)) {
+    return 'Already in the correct category folder';
+  }
+
+  if (parts[0].toLowerCase() === 'documents' && settings.subdivideDocuments !== false) {
+    const second = parts[1] || '';
+    if (!isDocumentSubcategoryFolderName(second)) return '';
+    return 'Already inside a Documents subcategory folder';
+  }
+
+  return 'Already in a category folder';
+}
+
+async function readDirSafe(dir) {
+  try {
+    return await fs.promises.readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    return null;
+  }
+}
+
+async function walkFiles(rootPath, settings, errors, current = rootPath, depth = 0) {
+  const entries = await readDirSafe(current);
+  if (!entries) {
+    errors.push({ path: current, status: 'error', error: 'Cannot read folder.' });
+    return [];
+  }
+
+  const files = [];
+  for (const entry of entries) {
+    const full = path.join(current, entry.name);
+    try {
+      if (!settings.includeHiddenFiles && isHiddenLikeName(entry.name)) continue;
+      if (entry.isDirectory()) {
+        if (!settings.includeSubfolders) continue;
+        if (settings.skipCategoryFolders && isCategoryFolderName(entry.name)) {
+          if (settings.subdivideDocuments !== false && entry.name.toLowerCase() === 'documents') {
+            files.push(...await walkFiles(rootPath, settings, errors, full, depth + 1));
+          }
+          continue;
+        }
+        const relParts = relativeParts(rootPath, full);
+        if (
+          settings.skipCategoryFolders
+          && relParts[0] && relParts[0].toLowerCase() === 'documents'
+          && isDocumentSubcategoryFolderName(entry.name)
+        ) {
+          continue;
+        }
+        files.push(...await walkFiles(rootPath, settings, errors, full, depth + 1));
+      } else if (entry.isFile()) {
+        files.push(full);
+      }
+    } catch (err) {
+      errors.push({ path: full, status: 'error', error: err.message });
+    }
+  }
+  return files;
+}
+
 function resolveCollision(destDir, fileName) {
   const ext = path.extname(fileName);
   const base = path.basename(fileName, ext);
   let candidate = path.join(destDir, fileName);
   let counter = 1;
   while (fs.existsSync(candidate)) {
-    candidate = path.join(destDir, `${base}(${counter})${ext}`);
+    candidate = path.join(destDir, `${base} (${counter})${ext}`);
     counter += 1;
   }
   return candidate;
 }
 
-/**
- * Scan the Downloads root (non-recursive) and produce a move preview.
- * Returns { ok, downloadsPath, items: [...], totalFiles, byCategory }.
- */
-function scan(override) {
-  const downloadsPath = getDownloadsPath(override);
+function relativeOrFull(rootPath, filePath, showFullPaths) {
+  return showFullPaths ? filePath : path.relative(rootPath, filePath) || path.basename(filePath);
+}
+
+async function scan(folderPath, scanOptions = {}) {
+  const saved = await getSettings();
+  const settings = normalizeSettings({ ...(saved.settings || {}), ...scanOptions });
+  const rootPath = folderPath || settings.folderPath || await resolveDownloadsPath();
   const result = {
     ok: true,
-    downloadsPath,
+    downloadsPath: rootPath,
+    settings,
     items: [],
-    totalFiles: 0,
+    skippedItems: [],
+    errors: [],
     byCategory: {},
+    categories: [],
+    totalFiles: 0,
+    organizableFiles: 0,
+    skippedFiles: 0,
+    errorFiles: 0,
   };
 
-  let entries;
-  try {
-    entries = fs.readdirSync(downloadsPath, { withFileTypes: true });
-  } catch (err) {
-    return {
-      ...result,
-      ok: false,
-      error: `無法讀取 Downloads 資料夾（${downloadsPath}）：${err.message}`,
-    };
+  if (!await pathIsDirectory(rootPath)) {
+    return { ...result, ok: false, error: `Folder not found: ${rootPath}` };
   }
 
-  for (const entry of entries) {
+  const files = await walkFiles(rootPath, settings, result.errors);
+  result.totalFiles = files.length;
+
+  for (const sourcePath of files) {
     try {
-      if (!entry.isFile()) continue; // skip directories / symlinks
-      const ext = path.extname(entry.name);
-      const category = categoryForExt(ext);
-      const sourcePath = path.join(downloadsPath, entry.name);
-      const targetDir = path.join(downloadsPath, category);
+      const classification = classifyFile(path.basename(sourcePath), settings);
+      const skipReason = skipReasonForCategoryFolder(rootPath, sourcePath, classification, settings);
+      if (skipReason) {
+        result.skippedItems.push({
+          name: path.basename(sourcePath),
+          sourcePath,
+          displaySource: relativeOrFull(rootPath, sourcePath, settings.showFullPaths),
+          status: 'skipped',
+          reason: skipReason,
+        });
+        continue;
+      }
+
+      const targetDir = path.join(rootPath, ...classification.targetSegments);
+      const targetPath = resolveCollision(targetDir, path.basename(sourcePath));
       result.items.push({
-        name: entry.name,
-        ext: ext || '(無副檔名)',
-        category,
+        id: `${sourcePath}|${classification.categoryPath}`,
+        name: path.basename(sourcePath),
+        ext: classification.ext,
+        type: classification.categoryPath,
+        category: classification.category,
+        subcategory: classification.subcategory,
+        categoryPath: classification.categoryPath,
+        rootPath,
         sourcePath,
         targetDir,
+        targetPath,
+        displaySource: relativeOrFull(rootPath, sourcePath, settings.showFullPaths),
+        displayTarget: relativeOrFull(rootPath, targetPath, settings.showFullPaths),
+        displayTargetDir: relativeOrFull(rootPath, targetDir, settings.showFullPaths),
+        status: 'ready',
       });
-      result.totalFiles += 1;
-      result.byCategory[category] = (result.byCategory[category] || 0) + 1;
+      result.byCategory[classification.categoryPath] = (result.byCategory[classification.categoryPath] || 0) + 1;
     } catch (err) {
-      // Skip unreadable entries but keep going.
-      console.error('[fileOrganizerService] scan entry failed:', entry.name, err);
+      result.errors.push({ path: sourcePath, name: path.basename(sourcePath), status: 'error', error: err.message });
     }
   }
+
+  result.organizableFiles = result.items.length;
+  result.skippedFiles = result.skippedItems.length;
+  result.errorFiles = result.errors.length;
+  result.categories = Object.keys(result.byCategory)
+    .sort((a, b) => result.byCategory[b] - result.byCategory[a] || a.localeCompare(b))
+    .map((category) => {
+      const rule = categoryRule(category);
+      return {
+        category,
+        label: rule.label,
+        count: result.byCategory[category],
+        targetDir: path.join(rootPath, ...category.split('/')),
+        examples: rule.exts.length ? rule.exts.slice(0, 8) : category === 'No Extension' ? ['(none)'] : ['unmatched'],
+      };
+    });
 
   return result;
 }
 
-/**
- * Lightweight count of loose (unsorted) files directly in the Downloads root.
- * Used by the dashboard.
- */
+async function copyOrMove(sourcePath, destPath, mode) {
+  if (mode === 'copy') {
+    await fs.promises.copyFile(sourcePath, destPath);
+    return;
+  }
+  try {
+    await fs.promises.rename(sourcePath, destPath);
+  } catch (err) {
+    if (err.code !== 'EXDEV') throw err;
+    await fs.promises.copyFile(sourcePath, destPath);
+    await fs.promises.unlink(sourcePath);
+  }
+}
+
+async function readHistoryFile() {
+  const target = historyPath();
+  try {
+    const raw = await fs.promises.readFile(target, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    if (err.code === 'ENOENT') return [];
+    return [];
+  }
+}
+
+async function writeHistoryFile(history) {
+  const target = historyPath();
+  await fs.promises.mkdir(path.dirname(target), { recursive: true });
+  await fs.promises.writeFile(target, JSON.stringify(history.slice(0, 30), null, 2), 'utf-8');
+  return target;
+}
+
+async function getHistory() {
+  const history = await readHistoryFile();
+  return { ok: true, path: historyPath(), history, last: history[0] || null };
+}
+
+async function organize(items, options = {}) {
+  const saved = await getSettings();
+  const settings = normalizeSettings({ ...(saved.settings || {}), ...options });
+  const selected = Array.isArray(items) ? items : [];
+  const organizedAt = new Date().toISOString();
+  const results = [];
+  const historyEntries = [];
+  const byCategory = {};
+  const failedFiles = [];
+  let moved = 0;
+  let copied = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const item of selected) {
+    try {
+      if (!item || !item.sourcePath || !item.targetDir) throw new Error('Invalid organize item.');
+      const stat = await fs.promises.stat(item.sourcePath);
+      if (!stat.isFile()) throw new Error('Source is not a file.');
+
+      const sourceDir = path.resolve(path.dirname(item.sourcePath)).toLowerCase();
+      const targetDirResolved = path.resolve(item.targetDir).toLowerCase();
+      if (sourceDir === targetDirResolved) {
+        skipped += 1;
+        results.push({
+          name: item.name || path.basename(item.sourcePath),
+          from: item.sourcePath,
+          to: item.sourcePath,
+          category: item.categoryPath || item.category || '',
+          status: 'skipped',
+          message: 'Already in target folder.',
+        });
+        continue;
+      }
+
+      await fs.promises.mkdir(item.targetDir, { recursive: true });
+      const dest = resolveCollision(item.targetDir, path.basename(item.sourcePath));
+      await copyOrMove(item.sourcePath, dest, settings.mode);
+
+      if (settings.mode === 'copy') copied += 1;
+      else moved += 1;
+
+      const category = item.categoryPath || item.category || '';
+      byCategory[category] = (byCategory[category] || 0) + 1;
+      const record = {
+        fileName: path.basename(item.sourcePath),
+        category,
+        originalPath: item.sourcePath,
+        newPath: dest,
+        mode: settings.mode,
+        organizedAt,
+        movedAt: organizedAt,
+      };
+      historyEntries.push(record);
+      results.push({
+        name: record.fileName,
+        from: record.originalPath,
+        to: record.newPath,
+        category: record.category,
+        mode: settings.mode,
+        status: settings.mode === 'copy' ? 'copied' : 'moved',
+      });
+    } catch (err) {
+      failed += 1;
+      results.push({
+        name: item ? item.name || path.basename(item.sourcePath || '') : '(unknown)',
+        from: item ? item.sourcePath || '' : '',
+        to: '',
+        category: item ? item.category || '' : '',
+        status: 'error',
+        error: err.message,
+      });
+      failedFiles.push({
+        name: item ? item.name || path.basename(item.sourcePath || '') : '(unknown)',
+        path: item ? item.sourcePath || '' : '',
+        error: err.message,
+      });
+    }
+  }
+
+  let historyFile = historyPath();
+  let historyError = null;
+  if (historyEntries.length) {
+    try {
+      const history = await readHistoryFile();
+      history.unshift({
+        id: `organize-${Date.now()}`,
+        organizedAt,
+        rootPath: selected[0] ? selected[0].rootPath || path.dirname(selected[0].targetDir) : '',
+        mode: settings.mode,
+        entries: historyEntries,
+        summary: { moved, copied, skipped, failed, total: selected.length, byCategory },
+      });
+      historyFile = await writeHistoryFile(history);
+    } catch (err) {
+      historyError = err.message;
+    }
+  }
+
+  return {
+    ok: failed === 0 && !historyError,
+    moved,
+    copied,
+    skipped,
+    failed,
+    total: selected.length,
+    summary: { moved, copied, skipped, failed, total: selected.length, byCategory, failedFiles },
+    results,
+    historyFile,
+    historyError,
+  };
+}
+
+async function restoreLast() {
+  const history = await readHistoryFile();
+  const batch = history[0];
+  if (!batch || !Array.isArray(batch.entries) || batch.entries.length === 0) {
+    return { ok: false, restored: 0, failed: 0, results: [], error: 'No organize history to restore.' };
+  }
+
+  const results = [];
+  let restored = 0;
+  let failed = 0;
+
+  for (const entry of batch.entries) {
+    try {
+      if (entry.mode === 'copy') {
+        results.push({
+          name: entry.fileName,
+          from: entry.newPath,
+          to: entry.originalPath,
+          status: 'skipped',
+          message: 'Copy-mode history does not need restore.',
+        });
+        continue;
+      }
+      const stat = await fs.promises.stat(entry.newPath);
+      if (!stat.isFile()) throw new Error('Organized file no longer exists.');
+      await fs.promises.mkdir(path.dirname(entry.originalPath), { recursive: true });
+      const dest = resolveCollision(path.dirname(entry.originalPath), path.basename(entry.originalPath));
+      await copyOrMove(entry.newPath, dest, 'move');
+      restored += 1;
+      results.push({ name: entry.fileName, from: entry.newPath, to: dest, status: 'restored' });
+    } catch (err) {
+      failed += 1;
+      results.push({ name: entry.fileName, from: entry.newPath, to: entry.originalPath, status: 'error', error: err.message });
+    }
+  }
+
+  if (failed === 0) {
+    history.shift();
+    await writeHistoryFile(history);
+  }
+
+  return { ok: failed === 0, restored, failed, results, historyFile: historyPath() };
+}
+
 function countUnsorted(override) {
-  const downloadsPath = getDownloadsPath(override);
+  const downloadsPath = override && String(override).trim() ? override : cachedDetected || path.join(os.homedir(), 'Downloads');
   try {
     const entries = fs.readdirSync(downloadsPath, { withFileTypes: true });
     return {
       ok: true,
       downloadsPath,
-      count: entries.filter((e) => e.isFile()).length,
+      count: entries.filter((entry) => entry.isFile()).length,
     };
   } catch (err) {
     return { ok: false, downloadsPath, count: 0, error: err.message };
   }
 }
 
-/**
- * Move the provided items into their category folders.
- * `items` should come from scan().items (or a filtered subset).
- * Returns per-file results; never throws for individual failures.
- */
-function organize(items) {
-  const results = [];
-  if (!Array.isArray(items) || items.length === 0) {
-    return { ok: true, moved: 0, failed: 0, results: [] };
-  }
-
-  let moved = 0;
-  let failed = 0;
-
-  for (const item of items) {
-    try {
-      if (!item || !item.sourcePath || !item.targetDir) {
-        throw new Error('項目資料不完整');
-      }
-      if (!fs.existsSync(item.sourcePath)) {
-        throw new Error('來源檔案已不存在');
-      }
-      fs.mkdirSync(item.targetDir, { recursive: true });
-      const dest = resolveCollision(item.targetDir, path.basename(item.sourcePath));
-
-      try {
-        fs.renameSync(item.sourcePath, dest);
-      } catch (err) {
-        // Cross-device move: fall back to copy + unlink (still never destructive on error).
-        if (err.code === 'EXDEV') {
-          fs.copyFileSync(item.sourcePath, dest);
-          fs.unlinkSync(item.sourcePath);
-        } else {
-          throw err;
-        }
-      }
-
-      moved += 1;
-      results.push({
-        name: item.name,
-        from: item.sourcePath,
-        to: dest,
-        category: item.category,
-        status: 'moved',
-      });
-    } catch (err) {
-      failed += 1;
-      results.push({
-        name: item ? item.name : '(未知)',
-        from: item ? item.sourcePath : '',
-        to: '',
-        category: item ? item.category : '',
-        status: 'error',
-        error: err.message,
-      });
-    }
-  }
-
-  return { ok: failed === 0, moved, failed, results };
-}
-
 module.exports = {
   CATEGORY_RULES,
-  OTHERS_CATEGORY,
-  getDownloadsPath,
+  DEFAULT_DOWNLOAD_SETTINGS,
+  settingsPath,
+  historyPath,
+  getDefaultPath,
   detectDownloads,
   resolveDownloadsPath,
+  getSettings,
+  saveSettings,
   categoryForExt,
   scan,
-  countUnsorted,
   organize,
+  restoreLast,
+  getHistory,
+  countUnsorted,
+  resolveCollision,
 };
