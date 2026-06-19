@@ -69,6 +69,34 @@ async function organizeFileByType(action, info) {
   };
 }
 
+async function organizeFolderByType(action, info) {
+  const saved = await fileOrganizerService.getSettings();
+  const rootPath = (action && action.rootPath) || info.folder || (saved.settings && saved.settings.folderPath);
+  if (!rootPath) return { ok: false, error: 'Folder is not set.' };
+  const settings = {
+    ...(saved.settings || {}),
+    folderPath: rootPath,
+    includeSubfolders: action && action.includeSubfolders === true,
+    subdivideDocuments: action && action.subdivideDocuments === false ? false : true,
+  };
+  const scan = await fileOrganizerService.scan(rootPath, settings);
+  if (!scan.ok) return { ok: false, error: scan.error };
+  if (!scan.items || scan.items.length === 0) {
+    return { ok: true, moved: 0, copied: 0, skipped: scan.skippedFiles || 0, total: 0, message: 'No files to organize.' };
+  }
+  const res = await fileOrganizerService.organize(scan.items, settings);
+  notificationService.notify('Downloads 自動整理', `已整理 ${res.moved || res.copied || 0} 個檔案。`);
+  return {
+    ok: res.ok,
+    moved: res.moved || 0,
+    copied: res.copied || 0,
+    skipped: res.skipped || 0,
+    failed: res.failed || 0,
+    total: res.total || scan.items.length,
+    error: res.historyError,
+  };
+}
+
 async function organizeScreenshotByDate(config, action, info) {
   const settings = screenshotService.getSettings(config, action && action.settings ? action.settings : {});
   const scan = await screenshotService.scanScreenshots(info.folder, {
@@ -102,6 +130,34 @@ async function organizeScreenshotByDate(config, action, info) {
   };
 }
 
+async function organizeScreenshotFolder(config, action, info) {
+  const folder = info.folder || (action && action.rootPath) || screenshotService.getScreenshotsPath(config);
+  if (!folder) return { ok: false, error: 'Screenshots folder is not set.' };
+  const settings = screenshotService.getSettings(config, action && action.settings ? action.settings : {});
+  const scan = await screenshotService.scanScreenshots(folder, {
+    settings: {
+      ...settings,
+      includeSubfolders: action && action.includeSubfolders === true,
+      skipAlreadyOrganized: true,
+    },
+    keywordMap: screenshotService.getKeywordMap(config),
+  });
+  if (!scan.ok) return { ok: false, error: scan.error };
+  if (!scan.items || scan.items.length === 0) {
+    return { ok: true, moved: 0, skipped: scan.skippedFiles || 0, total: 0, message: 'No screenshots to organize.' };
+  }
+  const res = await screenshotService.organizeScreenshots(scan.items, { settings });
+  notificationService.notify('截圖自動整理', `已整理 ${res.moved || 0} 張截圖。`);
+  return {
+    ok: res.ok,
+    moved: res.moved || 0,
+    skipped: res.skipped || 0,
+    failed: res.failed || 0,
+    total: res.total || scan.items.length,
+    error: res.logError,
+  };
+}
+
 async function runCleanupScan(type, notifyTitle) {
   const res = await cleanupService.runAutomationAction(type);
   const size = (res.items || []).reduce((sum, item) => sum + Number(item.size || 0), 0);
@@ -127,8 +183,10 @@ async function runAction(action, info, config = {}) {
         await shell.openPath(info.folder);
         return { ok: true };
       case 'organizeFileByType':
+        if (!info || !info.path) return organizeFolderByType(action, info || {});
         return organizeFileByType(action, info);
       case 'organizeScreenshotByDate':
+        if (!info || !info.path) return organizeScreenshotFolder(config, action, info || {});
         return organizeScreenshotByDate(config, action, info);
       case 'cleanupScanTemp':
         return runCleanupScan('scanTemp', 'Temp scan');
@@ -196,6 +254,22 @@ async function runAction(action, info, config = {}) {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+}
+
+async function runRule(rule, config = {}) {
+  if (!rule || rule.enabled === false) return { ok: false, error: 'Automation rule is disabled.' };
+  const condition = rule.condition || {};
+  const folder = condition.folder || '';
+  const info = {
+    file: '',
+    path: '',
+    folder,
+    ext: '',
+    size: 0,
+    manual: true,
+  };
+  const result = await runAction(rule.action || {}, info, config);
+  return { rule: rule.name, ...result };
 }
 
 async function handleNewFile(config, info) {
@@ -296,6 +370,7 @@ module.exports = {
   list,
   matches,
   runAction,
+  runRule,
   handleNewFile,
   handleSchedules,
   startScheduler,

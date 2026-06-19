@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('api', {
   // Automations
   listAutomations: () => ipcRenderer.invoke('automations:list'),
   saveAutomations: (automations) => ipcRenderer.invoke('automations:save', automations),
+  runAutomation: (ruleId) => ipcRenderer.invoke('automations:run', ruleId),
 
   // Notifications
   testNotification: () => ipcRenderer.invoke('notifications:test'),

@@ -32,10 +32,10 @@ const ACTIONS = [
   { type: 'cleanupScanSafe', label: 'Clean Center 安全掃描' },
   { type: 'cleanupReminder', label: '提醒檢查 Clean Center' },
   { type: 'projectScanReminder', label: '提醒掃描 Project Hub' },
-  { type: 'healthGuardCheck', label: '健康守護提醒' },
+  { type: 'healthGuardCheck', label: '健康守門員檢查' },
   { type: 'move', label: '移到指定資料夾' },
   { type: 'notify', label: '顯示通知' },
-  { type: 'openFolder', label: '開啟來源資料夾' },
+  { type: 'openFolder', label: '開啟資料夾' },
 ];
 
 const DAYS = [
@@ -52,7 +52,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function createRule({ name = '新的自動化', condition, action } = {}) {
+function createRule({ name = '新的自動化規則', condition, action } = {}) {
   const now = nowIso();
   return {
     id: `a_${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -65,12 +65,25 @@ function createRule({ name = '新的自動化', condition, action } = {}) {
   };
 }
 
+function summarizeRun(result) {
+  if (!result || !result.ok) return (result && result.error) || '執行失敗';
+  const moved = Number(result.moved || 0);
+  const copied = Number(result.copied || 0);
+  const skipped = Number(result.skipped || 0);
+  const failed = Number(result.failed || 0);
+  if (moved || copied || skipped || failed) {
+    return `完成：移動 ${moved}、複製 ${copied}、略過 ${skipped}、失敗 ${failed}`;
+  }
+  return result.message || '完成，沒有需要整理的檔案';
+}
+
 export default function Automations() {
   const { toast } = useToast();
   const [rules, setRules] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [confirmId, setConfirmId] = useState(null);
+  const [runningId, setRunningId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,7 +108,21 @@ export default function Automations() {
   const persist = async (next) => {
     setRules(next);
     const result = await window.api.saveAutomations(next);
-    toast(result.ok ? '自動化規則已儲存並重新載入背景服務' : result.error || '儲存失敗', result.ok ? 'ok' : 'error');
+    toast(result.ok ? '自動化規則已儲存' : result.error || '儲存失敗', result.ok ? 'ok' : 'error');
+    return result;
+  };
+
+  const runRule = async (rule) => {
+    if (!rule || !window.api.runAutomation) return;
+    setRunningId(rule.id);
+    const result = await window.api.runAutomation(rule.id);
+    setRunningId(null);
+    toast(summarizeRun(result), result.ok ? 'ok' : 'error');
+  };
+
+  const addAndRun = async (rule) => {
+    const result = await persist([...rules, rule]);
+    if (result.ok) await runRule(rule);
   };
 
   const update = (id, patch) => persist(rules.map((rule) => (
@@ -120,17 +147,17 @@ export default function Automations() {
     action: { type: 'cleanupScanSafe', target: '' },
   })]);
 
-  const addDownloadsRule = () => persist([...rules, createRule({
-    name: 'Downloads 新檔自動整理',
+  const addDownloadsRule = () => addAndRun(createRule({
+    name: 'Downloads 新增自動整理',
     condition: { type: 'newFileInFolder', value: '', folder: paths.downloads },
     action: { type: 'organizeFileByType', target: '' },
-  })]);
+  }));
 
-  const addScreenshotsRule = () => persist([...rules, createRule({
-    name: '截圖新檔自動整理',
+  const addScreenshotsRule = () => addAndRun(createRule({
+    name: '截圖新增自動整理',
     condition: { type: 'newFileInFolder', value: '', folder: paths.screenshots },
     action: { type: 'organizeScreenshotByDate', target: '' },
-  })]);
+  }));
 
   const removeRule = async (id) => {
     await persist(rules.filter((rule) => rule.id !== id));
@@ -162,7 +189,7 @@ export default function Automations() {
 
       <SectionPanel
         title="快速建立"
-        description="先用常見情境建立，再依你的習慣微調。"
+        description="先用常見情境建立，再依你的習慣微調。快速建立會先儲存規則，並立即整理目前資料夾內的既有檔案。"
         actions={(
           <>
             <Button onClick={addDownloadsRule} disabled={!paths.downloads}>Downloads 自動整理</Button>
@@ -172,7 +199,7 @@ export default function Automations() {
         )}
       >
         <InlineAlert tone="info" title="排程提醒">
-          排程每分鐘檢查一次是否到期；Clean Center 排程只做安全掃描與通知，不會自動刪檔。
+          檔案與截圖整理會自動處理新出現的檔案，也可以按每條規則的「立即執行」整理目前資料夾。Clean Center 排程只做安全掃描與通知，不會自動刪檔。
         </InlineAlert>
       </SectionPanel>
 
@@ -180,7 +207,11 @@ export default function Automations() {
         <div className="loading-block"><span className="spinner" />載入自動化規則...</div>
       ) : rules.length === 0 ? (
         <Card>
-          <EmptyState title="尚無自動化" description="建立第一個規則，讓 App 開始主動處理重複工作。" action={<Button variant="primary" onClick={addRule}>建立規則</Button>} />
+          <EmptyState
+            title="尚未建立自動化"
+            description="建立規則後，App 可以協助處理新檔案、提醒清理與定期檢查。"
+            action={<Button variant="primary" onClick={addRule}>建立規則</Button>}
+          />
         </Card>
       ) : (
         <div className="automation-list">
@@ -191,7 +222,10 @@ export default function Automations() {
                   <Toggle checked={rule.enabled !== false} onChange={(enabled) => update(rule.id, { enabled })} />
                   <input style={{ ...inputStyle, fontWeight: 700, minWidth: 240 }} value={rule.name} onChange={(event) => update(rule.id, { name: event.target.value })} />
                 </div>
-                <Button variant="danger" size="sm" onClick={() => setConfirmId(rule.id)}>刪除</Button>
+                <div className="inline-controls">
+                  <Button size="sm" onClick={() => runRule(rule)} busy={runningId === rule.id}>立即執行</Button>
+                  <Button variant="danger" size="sm" onClick={() => setConfirmId(rule.id)}>刪除</Button>
+                </div>
               </div>
 
               <div className="rule-builder">
@@ -245,7 +279,7 @@ export default function Automations() {
                       </>
                     ) : null}
                   </div>
-                  <p className="project-note">清理類動作採保守模式：只掃描、通知，不會自動刪除檔案。</p>
+                  <p className="project-note">整理類動作採保守模式：只移動符合規則的檔案，遇到同名檔會自動改名，不會自動刪除檔案。</p>
                 </div>
               </div>
             </Card>
@@ -255,8 +289,8 @@ export default function Automations() {
 
       <Dialog
         open={!!confirmId}
-        title="刪除自動化規則"
-        message="此操作只會刪除規則，不會影響已整理的檔案。"
+        title="刪除自動化規則？"
+        message="這個動作只會刪除規則，不會刪除任何檔案。"
         confirmLabel="刪除"
         danger
         onConfirm={() => removeRule(confirmId)}

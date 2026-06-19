@@ -920,6 +920,20 @@ function registerIpc() {
     return saved;
   });
 
+  ipcMain.handle('automations:run', async (_event, ruleId) => {
+    const config = loadConfig();
+    const rule = automationService.list(config).find((item) => item && item.id === ruleId);
+    if (!rule) return { ok: false, error: '找不到自動化規則' };
+    const result = await automationService.runRule(rule, config);
+    if (result.ok) {
+      writeLog('info', `automation manual run: ${JSON.stringify(result)}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:automation-fired', [result]);
+      }
+    }
+    return result;
+  });
+
   // --- Notifications ---
   ipcMain.handle('notifications:test', async () => notificationService.notify('PC Life Assistant', '通知測試 ✅'));
   ipcMain.handle('notifications:list', async () => notificationService.listEvents());
