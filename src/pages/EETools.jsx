@@ -1,27 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import PageHeader from '../components/PageHeader.jsx';
-import Card from '../components/Card.jsx';
+import '../styles/ee-tools.css';
 import {
   ohmsLaw, voltageDivider, rcFilter, rlFilter, lcResonance,
   combineResistors, combineCapacitors, decodeResistorColors, encodeResistorValue,
   formatEng, parseEng, RESISTOR_COLORS, parseInBase, toBases,
 } from '../utils/eeMath.js';
 
-const inputStyle = {
-  width: '100%', boxSizing: 'border-box', padding: '8px 10px',
-  border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)',
-  color: 'var(--text)', fontFamily: '"Cascadia Code","Consolas",monospace',
-};
-const labelStyle = { fontSize: 12, color: 'var(--text-muted, #888)', marginBottom: 4, display: 'block' };
-const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: 16 };
-const outStyle = { fontFamily: '"Cascadia Code","Consolas",monospace', fontWeight: 600 };
-
 function Field({ label, value, onChange, placeholder }) {
   return (
     <label style={{ display: 'block' }}>
-      <span style={labelStyle}>{label}</span>
+      <span className="ee-label">{label}</span>
       <input
-        style={inputStyle}
+        className="ee-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -32,8 +22,28 @@ function Field({ label, value, onChange, placeholder }) {
 }
 
 function Row({ children }) {
-  return <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>{children}</div>;
+  return <div className="ee-row">{children}</div>;
 }
+
+function ToolCard({ icon, title, hint, children }) {
+  return (
+    <div className="ee-card">
+      <div className="ee-card-head">
+        <span className="ee-ico" aria-hidden="true">{icon}</span>
+        <span className="ee-card-title">{title}</span>
+      </div>
+      {hint ? <p className="ee-hint">{hint}</p> : null}
+      {children}
+    </div>
+  );
+}
+
+function Empty({ children }) {
+  return <p className="ee-empty">{children}</p>;
+}
+
+const Val = ({ children }) => <span className="ee-val">{children}</span>;
+const K = ({ children }) => <span className="k">{children}</span>;
 
 // ---- Ohm's law ----
 function OhmsLaw() {
@@ -44,8 +54,7 @@ function OhmsLaw() {
   const valid = res && Number.isFinite(res.v) && Number.isFinite(res.i);
 
   return (
-    <Card title="歐姆定律" icon="Ω">
-      <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>填入任意兩個值，自動算出其餘。可用工程記號（例：1k、4.7m）。</p>
+    <ToolCard icon="Ω" title="歐姆定律" hint="填入任意兩個值，自動算出其餘。可用工程記號（例：1k、4.7m）。">
       <Row>
         <Field label="電壓 V (V)" value={f.v} onChange={(v) => setF({ ...f, v })} placeholder="例 5" />
         <Field label="電流 I (A)" value={f.i} onChange={(v) => setF({ ...f, i: v })} placeholder="例 5m" />
@@ -55,14 +64,14 @@ function OhmsLaw() {
         <Field label="功率 P (W)" value={f.p} onChange={(v) => setF({ ...f, p: v })} placeholder="例 25m" />
       </Row>
       {valid ? (
-        <div style={{ marginTop: 10, lineHeight: 1.9 }}>
-          <div>V = <span style={outStyle}>{formatEng(res.v, 'V')}</span></div>
-          <div>I = <span style={outStyle}>{formatEng(res.i, 'A')}</span></div>
-          <div>R = <span style={outStyle}>{formatEng(res.r, 'Ω')}</span></div>
-          <div>P = <span style={outStyle}>{formatEng(res.p, 'W')}</span></div>
+        <div className="ee-readout">
+          <div><K>V</K> = <Val>{formatEng(res.v, 'V')}</Val></div>
+          <div><K>I</K> = <Val>{formatEng(res.i, 'A')}</Val></div>
+          <div><K>R</K> = <Val>{formatEng(res.r, 'Ω')}</Val></div>
+          <div><K>P</K> = <Val>{formatEng(res.p, 'W')}</Val></div>
         </div>
-      ) : <p className="muted" style={{ fontSize: 12 }}>輸入兩個值以計算。</p>}
-    </Card>
+      ) : <Empty>輸入兩個值以計算。</Empty>}
+    </ToolCard>
   );
 }
 
@@ -73,8 +82,7 @@ function VoltageDivider() {
   const ok = [vin, r1, r2].every(Number.isFinite) && r1 + r2 > 0;
   const out = ok ? voltageDivider({ vin, r1, r2 }).vout : null;
   return (
-    <Card title="分壓器" icon="÷">
-      <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Vout = Vin × R2 / (R1 + R2)</p>
+    <ToolCard icon="÷" title="分壓器" hint="Vout = Vin × R2 / (R1 + R2)">
       <Row>
         <Field label="Vin (V)" value={f.vin} onChange={(v) => setF({ ...f, vin: v })} placeholder="例 9" />
         <div />
@@ -83,9 +91,9 @@ function VoltageDivider() {
         <Field label="R1 (Ω)" value={f.r1} onChange={(v) => setF({ ...f, r1: v })} placeholder="例 1k" />
         <Field label="R2 (Ω)" value={f.r2} onChange={(v) => setF({ ...f, r2: v })} placeholder="例 2k" />
       </Row>
-      {ok ? <div style={{ marginTop: 6 }}>Vout = <span style={outStyle}>{formatEng(out, 'V')}</span></div>
-        : <p className="muted" style={{ fontSize: 12 }}>輸入 Vin、R1、R2。</p>}
-    </Card>
+      {ok ? <div className="ee-readout"><K>Vout</K> = <Val>{formatEng(out, 'V')}</Val></div>
+        : <Empty>輸入 Vin、R1、R2。</Empty>}
+    </ToolCard>
   );
 }
 
@@ -95,14 +103,14 @@ const MULT_COLORS = RESISTOR_COLORS.filter((c) => c.mult != null);
 const TOL_COLORS = RESISTOR_COLORS.filter((c) => c.tol != null);
 
 function Swatch({ css }) {
-  return <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: css, border: '1px solid var(--border)', marginRight: 6, verticalAlign: 'middle' }} />;
+  return <span className="ee-swatch" style={{ background: css }} />;
 }
 
 function ColorSelect({ label, options, value, onChange }) {
   return (
     <label style={{ display: 'block' }}>
-      <span style={labelStyle}>{label}</span>
-      <select style={inputStyle} value={value} onChange={(e) => onChange(e.target.value)}>
+      <span className="ee-label">{label}</span>
+      <select className="ee-input" value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((c) => <option key={c.name} value={c.name}>{c.label} {c.name}</option>)}
       </select>
     </label>
@@ -116,7 +124,7 @@ function DecodeMode() {
   const swatches = bands.map((n) => RESISTOR_COLORS.find((c) => c.name === n));
   return (
     <>
-      <div style={{ marginBottom: 10 }}>
+      <div className="ee-swatches">
         {swatches.map((c, idx) => <Swatch key={idx} css={c?.css || '#888'} />)}
       </div>
       <Row>
@@ -128,9 +136,9 @@ function DecodeMode() {
         <ColorSelect label="誤差" options={TOL_COLORS} value={bands[3]} onChange={(v) => set(3, v)} />
       </Row>
       {Number.isFinite(ohms) ? (
-        <div style={{ marginTop: 6 }}>
-          阻值 = <span style={outStyle}>{formatEng(ohms, 'Ω')}</span>
-          {tolerance != null ? <span className="muted"> ± {tolerance}%</span> : null}
+        <div className="ee-readout">
+          <K>阻值</K> = <Val>{formatEng(ohms, 'Ω')}</Val>
+          {tolerance != null ? <span className="ee-note"> ± {tolerance}%</span> : null}
         </div>
       ) : null}
     </>
@@ -147,34 +155,32 @@ function EncodeMode() {
       <Row>
         <Field label="阻值 (Ω)" value={text} onChange={setText} placeholder="例 4.7k" />
         <label style={{ display: 'block' }}>
-          <span style={labelStyle}>環數</span>
-          <select style={inputStyle} value={count} onChange={(e) => setCount(Number(e.target.value))}>
+          <span className="ee-label">環數</span>
+          <select className="ee-input" value={count} onChange={(e) => setCount(Number(e.target.value))}>
             <option value={4}>4 環</option>
             <option value={5}>5 環</option>
           </select>
         </label>
       </Row>
       {enc ? (
-        <div>
-          <div style={{ marginBottom: 8 }}>
+        <div className="ee-readout">
+          <div className="ee-swatches">
             {enc.bands.map((n, idx) => {
               const c = RESISTOR_COLORS.find((x) => x.name === n);
               return <Swatch key={idx} css={c?.css || '#888'} />;
             })}
           </div>
-          <div style={{ lineHeight: 1.9 }}>
-            {enc.bands.map((n, idx) => {
-              const c = RESISTOR_COLORS.find((x) => x.name === n);
-              const role = idx < enc.bands.length - 1 ? `第 ${idx + 1} 位` : '倍率';
-              return <div key={idx}><span className="muted" style={{ fontSize: 12 }}>{role}：</span> <strong>{c?.label} {n}</strong></div>;
-            })}
-          </div>
-          <div style={{ marginTop: 6 }} className="muted">
-            回推值 = <span style={outStyle}>{formatEng(enc.value, 'Ω')}</span>
-            {enc.exact ? '（精確）' : '（最接近的標準色碼）'}
+          {enc.bands.map((n, idx) => {
+            const c = RESISTOR_COLORS.find((x) => x.name === n);
+            const role = idx < enc.bands.length - 1 ? `第 ${idx + 1} 位` : '倍率';
+            return <div key={idx}><K>{role}</K> <strong>{c?.label} {n}</strong></div>;
+          })}
+          <div style={{ marginTop: 4 }}>
+            <K>回推值</K> = <Val>{formatEng(enc.value, 'Ω')}</Val>
+            <span className="ee-note"> {enc.exact ? '（精確）' : '（最接近）'}</span>
           </div>
         </div>
-      ) : <p className="muted" style={{ fontSize: 12 }}>輸入一個有效阻值（例 4.7k）。</p>}
+      ) : <Empty>輸入一個有效阻值（例 4.7k）。</Empty>}
     </>
   );
 }
@@ -182,13 +188,13 @@ function EncodeMode() {
 function ResistorColorCode() {
   const [mode, setMode] = useState('decode');
   return (
-    <Card title="電阻色碼" icon="🎨">
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <button type="button" className={`filter-chip ${mode === 'decode' ? 'active' : ''}`} onClick={() => setMode('decode')}>色碼 → 阻值</button>
-        <button type="button" className={`filter-chip ${mode === 'encode' ? 'active' : ''}`} onClick={() => setMode('encode')}>阻值 → 色碼</button>
+    <ToolCard icon="R" title="電阻色碼">
+      <div className="ee-seg">
+        <button type="button" className={mode === 'decode' ? 'on' : ''} onClick={() => setMode('decode')}>色碼 → 阻值</button>
+        <button type="button" className={mode === 'encode' ? 'on' : ''} onClick={() => setMode('encode')}>阻值 → 色碼</button>
       </div>
       {mode === 'decode' ? <DecodeMode /> : <EncodeMode />}
-    </Card>
+    </ToolCard>
   );
 }
 
@@ -200,8 +206,7 @@ function Reactive() {
   const rl = Number.isFinite(r) && Number.isFinite(l) ? rlFilter(r, l) : null;
   const lc = Number.isFinite(l) && Number.isFinite(c) ? lcResonance(l, c) : null;
   return (
-    <Card title="RC / RL / LC" icon="〜">
-      <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>輸入需要的數值；對應的結果會出現。</p>
+    <ToolCard icon="∿" title="RC / RL / LC" hint="輸入需要的數值；對應的結果會出現。">
       <Row>
         <Field label="R (Ω)" value={f.r} onChange={(v) => setF({ ...f, r: v })} placeholder="例 1k" />
         <Field label="C (F)" value={f.c} onChange={(v) => setF({ ...f, c: v })} placeholder="例 1u" />
@@ -210,13 +215,14 @@ function Reactive() {
         <Field label="L (H)" value={f.l} onChange={(v) => setF({ ...f, l: v })} placeholder="例 1m" />
         <div />
       </Row>
-      <div style={{ lineHeight: 1.9 }}>
-        {rc ? <div>RC：τ = <span style={outStyle}>{formatEng(rc.tau, 's')}</span>，fc = <span style={outStyle}>{formatEng(rc.fc, 'Hz')}</span></div> : null}
-        {rl ? <div>RL：τ = <span style={outStyle}>{formatEng(rl.tau, 's')}</span>，fc = <span style={outStyle}>{formatEng(rl.fc, 'Hz')}</span></div> : null}
-        {lc ? <div>LC 諧振：f = <span style={outStyle}>{formatEng(lc.f, 'Hz')}</span></div> : null}
-        {!rc && !rl && !lc ? <p className="muted" style={{ fontSize: 12 }}>輸入 R+C、R+L 或 L+C。</p> : null}
-      </div>
-    </Card>
+      {rc || rl || lc ? (
+        <div className="ee-readout">
+          {rc ? <div><K>RC</K> τ = <Val>{formatEng(rc.tau, 's')}</Val>，fc = <Val>{formatEng(rc.fc, 'Hz')}</Val></div> : null}
+          {rl ? <div><K>RL</K> τ = <Val>{formatEng(rl.tau, 's')}</Val>，fc = <Val>{formatEng(rl.fc, 'Hz')}</Val></div> : null}
+          {lc ? <div><K>LC</K> f = <Val>{formatEng(lc.f, 'Hz')}</Val></div> : null}
+        </div>
+      ) : <Empty>輸入 R+C、R+L 或 L+C。</Empty>}
+    </ToolCard>
   );
 }
 
@@ -230,10 +236,10 @@ function SeriesParallel() {
   const parallel = isR ? combineResistors(values, 'parallel') : combineCapacitors(values, 'parallel');
   const unit = isR ? 'Ω' : 'F';
   return (
-    <Card title="串聯 / 並聯" icon="≣">
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <button type="button" className={`filter-chip ${isR ? 'active' : ''}`} onClick={() => setKind('R')}>電阻 R</button>
-        <button type="button" className={`filter-chip ${!isR ? 'active' : ''}`} onClick={() => setKind('C')}>電容 C</button>
+    <ToolCard icon="≣" title="串聯 / 並聯">
+      <div className="ee-seg">
+        <button type="button" className={isR ? 'on' : ''} onClick={() => setKind('R')}>電阻 R</button>
+        <button type="button" className={!isR ? 'on' : ''} onClick={() => setKind('C')}>電容 C</button>
       </div>
       <Field
         label={`輸入多個${isR ? '電阻' : '電容'}值（用空白或逗號分隔）`}
@@ -242,13 +248,13 @@ function SeriesParallel() {
         placeholder={isR ? '例 1k, 2k, 3k' : '例 1u, 2.2u'}
       />
       {values.length >= 1 ? (
-        <div style={{ marginTop: 10, lineHeight: 1.9 }}>
-          <div>串聯 = <span style={outStyle}>{formatEng(series, unit)}</span></div>
-          <div>並聯 = <span style={outStyle}>{formatEng(parallel, unit)}</span></div>
-          <div className="muted" style={{ fontSize: 12 }}>{values.length} 個元件</div>
+        <div className="ee-readout">
+          <div><K>串聯</K> = <Val>{formatEng(series, unit)}</Val></div>
+          <div><K>並聯</K> = <Val>{formatEng(parallel, unit)}</Val></div>
+          <div className="ee-note">{values.length} 個元件</div>
         </div>
-      ) : <p className="muted" style={{ fontSize: 12 }}>輸入至少一個值。</p>}
-    </Card>
+      ) : <Empty>輸入至少一個值。</Empty>}
+    </ToolCard>
   );
 }
 
@@ -260,12 +266,12 @@ function BaseConverter() {
   const out = toBases(n);
   const ok = Number.isFinite(n);
   return (
-    <Card title="進位轉換" icon="#">
+    <ToolCard icon="0x" title="進位轉換">
       <Row>
         <Field label="數值" value={val} onChange={setVal} placeholder="例 255 / FF / 1010" />
         <label style={{ display: 'block' }}>
-          <span style={labelStyle}>輸入進位</span>
-          <select style={inputStyle} value={base} onChange={(e) => setBase(Number(e.target.value))}>
+          <span className="ee-label">輸入進位</span>
+          <select className="ee-input" value={base} onChange={(e) => setBase(Number(e.target.value))}>
             <option value={2}>二進位 (BIN)</option>
             <option value={8}>八進位 (OCT)</option>
             <option value={10}>十進位 (DEC)</option>
@@ -274,14 +280,14 @@ function BaseConverter() {
         </label>
       </Row>
       {ok ? (
-        <div style={{ lineHeight: 1.9 }}>
-          <div>BIN = <span style={outStyle}>{out.bin}</span></div>
-          <div>OCT = <span style={outStyle}>{out.oct}</span></div>
-          <div>DEC = <span style={outStyle}>{out.dec}</span></div>
-          <div>HEX = <span style={outStyle}>{out.hex}</span></div>
+        <div className="ee-readout">
+          <div><K>BIN</K> = <Val>{out.bin}</Val></div>
+          <div><K>OCT</K> = <Val>{out.oct}</Val></div>
+          <div><K>DEC</K> = <Val>{out.dec}</Val></div>
+          <div><K>HEX</K> = <Val>{out.hex}</Val></div>
         </div>
-      ) : <p className="muted" style={{ fontSize: 12 }}>輸入一個有效數值。</p>}
-    </Card>
+      ) : <Empty>輸入一個有效數值。</Empty>}
+    </ToolCard>
   );
 }
 
@@ -291,13 +297,13 @@ export default function EETools() {
     <Reactive key="rc" />, <SeriesParallel key="sp" />, <BaseConverter key="base" />,
   ]), []);
   return (
-    <div>
-      <PageHeader
-        eyebrow="TOOLBOX"
-        title="EE 工具"
-        description="電機常用快速計算：歐姆定律、分壓、電阻色碼、RC/RL/LC、串並聯與進位轉換。輸入支援工程記號（k、m、u、n…）。"
-      />
-      <div style={gridStyle}>{tools}</div>
+    <div className="ee-tech">
+      <div className="ee-hero">
+        <span className="ee-kicker">Toolbox</span>
+        <h1 className="ee-title">EE 工具</h1>
+        <p className="ee-sub">電機常用快速計算：歐姆定律、分壓、電阻色碼、RC/RL/LC、串並聯與進位轉換。輸入支援工程記號（k、m、u、n…）。</p>
+      </div>
+      <div className="ee-grid2">{tools}</div>
     </div>
   );
 }
