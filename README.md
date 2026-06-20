@@ -101,6 +101,22 @@ The goal is not to be another todo list — it's to **remove the small repeated 
   <sub>Scans temp / cache / large / duplicate files under safe rules: recently modified files, installers, drivers, Windows Update, and your Downloads / Desktop / Documents are never auto-cleaned. Nothing is removed without explicit confirmation.</sub>
 </div>
 
+### EE Quick Tools — calculators, with bidirectional resistor colour code
+
+<div align="center">
+  <img src="docs/screenshots/08-ee-tools.png" alt="EE Quick Tools" width="90%" />
+  <br/>
+  <sub>Ohm's law, voltage divider, RC/RL/LC, series/parallel, and base conversion — all engineering-notation aware. The resistor card works both ways: colours → value, or a value → the colour bands (here 4.7 kΩ → yellow-violet-red).</sub>
+</div>
+
+### Embedded Lab — build, one-click flash, and serial monitor
+
+<div align="center">
+  <img src="docs/screenshots/09-embedded-lab.png" alt="Embedded Lab" width="90%" />
+  <br/>
+  <sub>Detects the project type and compiles/simulates with streamed output. Arduino projects get a one-click <b>Flash</b> button (behind a confirmation dialog), and the read-only serial monitor lists COM ports and streams live data.</sub>
+</div>
+
 ---
 
 ## 🛡️ Safety Principles
