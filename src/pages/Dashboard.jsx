@@ -118,6 +118,36 @@ function buildDailyAlerts(status, cleanup, pinnedProjects) {
   return alerts;
 }
 
+function DashboardGlobe() {
+  return (
+    <svg className="dash-globe" viewBox="0 0 230 230" aria-hidden="true">
+      <circle className="halo" cx="115" cy="115" r="86" fill="rgba(37,99,235,0.07)" />
+      <g fill="none" stroke="#2563eb" strokeOpacity="0.4">
+        <circle cx="115" cy="115" r="80" strokeOpacity="0.55" />
+        <ellipse cx="115" cy="115" rx="30" ry="80" />
+        <ellipse cx="115" cy="115" rx="56" ry="80" />
+        <ellipse cx="115" cy="115" rx="80" ry="30" />
+        <ellipse cx="115" cy="115" rx="80" ry="56" />
+        <line x1="35" y1="115" x2="195" y2="115" />
+        <line x1="115" y1="35" x2="115" y2="195" />
+      </g>
+      <g fill="#3b82f6">
+        <circle cx="115" cy="35" r="2.6" />
+        <circle cx="195" cy="115" r="2.6" />
+        <circle cx="115" cy="195" r="2.6" />
+        <circle cx="35" cy="115" r="2.6" />
+        <circle cx="158" cy="72" r="2" />
+        <circle cx="72" cy="158" r="2" />
+        <circle cx="160" cy="150" r="2" />
+      </g>
+      <g className="orbit">
+        <ellipse cx="115" cy="115" rx="104" ry="44" fill="none" stroke="#06b6d4" strokeOpacity="0.45" strokeDasharray="2 7" />
+        <circle cx="219" cy="115" r="3.6" fill="#06b6d4" />
+      </g>
+    </svg>
+  );
+}
+
 export default function Dashboard({ onNavigate }) {
   const { toast } = useToast();
   const [status, setStatus] = useState(null);
@@ -215,6 +245,7 @@ export default function Dashboard({ onNavigate }) {
 
       <section className="daily-hero">
         <div className="daily-score card">
+          <DashboardGlobe />
           <div className={`score-ring ${healthTone(health?.score || 0)}`}>
             <strong>{health?.score ?? '--'}</strong>
             <span>/100</span>
