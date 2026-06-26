@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const electron = require('electron');
 
 const gitService = require('./gitService');
+const { PROJECT_EXCLUDES } = require('./shared/constants');
 
 const shell = electron.shell || {
   openPath: async () => 'Electron shell is unavailable.',
@@ -14,26 +15,7 @@ const shell = electron.shell || {
 };
 const app = electron.app;
 
-const DEFAULT_EXCLUDES = [
-  'C:\\Windows',
-  'C:\\Program Files',
-  'C:\\Program Files (x86)',
-  'C:\\ProgramData',
-  'AppData',
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  'out',
-  '.cache',
-  '.vscode',
-  'venv',
-  '.venv',
-  'release',
-  'release-auto',
-  'target',
-  '__pycache__',
-];
+const DEFAULT_EXCLUDES = PROJECT_EXCLUDES;
 
 const FILTERS = [
   'All',
@@ -58,26 +40,171 @@ const FILTERS = [
 ];
 
 const LANGUAGE_MODULES = {
-  javascript: { name: 'JavaScript', files: { 'javascript/package.json': (name) => JSON.stringify({ name: name + '-javascript', version: '0.1.0', private: true, scripts: { start: 'node src/index.js' } }, null, 2), 'javascript/src/index.js': "console.log('Hello from JavaScript');\n" } },
-  typescript: { name: 'TypeScript', files: { 'typescript/package.json': (name) => JSON.stringify({ name: name + '-typescript', version: '0.1.0', private: true, scripts: { build: 'tsc', start: 'node dist/index.js' }, devDependencies: { typescript: '^5.7.2' } }, null, 2), 'typescript/tsconfig.json': JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', outDir: 'dist', strict: true }, include: ['src'] }, null, 2), 'typescript/src/index.ts': "const message: string = 'Hello from TypeScript';\nconsole.log(message);\n" } },
-  python: { name: 'Python', files: { 'python/README.md': '# Python\n\nPython workspace.\n', 'python/main.py': "def main():\n    print('Hello from Python')\n\n\nif __name__ == '__main__':\n    main()\n", 'python/requirements.txt': '' } },
-  java: { name: 'Java', files: { 'java/src/Main.java': "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Hello from Java\");\n    }\n}\n" } },
-  csharp: { name: 'C#', files: { 'csharp/Program.cs': "Console.WriteLine(\"Hello from C#\");\n", 'csharp/README.md': '# C#\n\nRun dotnet new console if you want a full project file.\n' } },
-  cpp: { name: 'C / C++', files: { 'cpp/main.cpp': "#include <iostream>\n\nint main() {\n    std::cout << \"Hello from C++\" << std::endl;\n    return 0;\n}\n", 'cpp/CMakeLists.txt': (name) => "cmake_minimum_required(VERSION 3.16)\nproject(" + name.replace(/[^A-Za-z0-9_]/g, '_') + "_cpp)\nset(CMAKE_CXX_STANDARD 17)\nadd_executable(app main.cpp)\n" } },
-  go: { name: 'Go', files: { 'go/go.mod': (name) => 'module ' + name.replace(/[^a-zA-Z0-9_-]/g, '-') + '/go\n\ngo 1.22\n', 'go/main.go': "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"Hello from Go\")\n}\n" } },
-  rust: { name: 'Rust', files: { 'rust/Cargo.toml': (name) => '[package]\nname = "' + name.replace(/[^a-zA-Z0-9_-]/g, '-') + '-rust"\nversion = "0.1.0"\nedition = "2021"\n', 'rust/src/main.rs': 'fn main() {\n    println!("Hello from Rust");\n}\n' } },
+  javascript: {
+    name: 'JavaScript',
+    files: {
+      'javascript/package.json': (name) =>
+        JSON.stringify(
+          {
+            name: name + '-javascript',
+            version: '0.1.0',
+            private: true,
+            scripts: { start: 'node src/index.js' },
+          },
+          null,
+          2,
+        ),
+      'javascript/src/index.js': "console.log('Hello from JavaScript');\n",
+    },
+  },
+  typescript: {
+    name: 'TypeScript',
+    files: {
+      'typescript/package.json': (name) =>
+        JSON.stringify(
+          {
+            name: name + '-typescript',
+            version: '0.1.0',
+            private: true,
+            scripts: { build: 'tsc', start: 'node dist/index.js' },
+            devDependencies: { typescript: '^5.7.2' },
+          },
+          null,
+          2,
+        ),
+      'typescript/tsconfig.json': JSON.stringify(
+        {
+          compilerOptions: {
+            target: 'ES2022',
+            module: 'NodeNext',
+            moduleResolution: 'NodeNext',
+            outDir: 'dist',
+            strict: true,
+          },
+          include: ['src'],
+        },
+        null,
+        2,
+      ),
+      'typescript/src/index.ts':
+        "const message: string = 'Hello from TypeScript';\nconsole.log(message);\n",
+    },
+  },
+  python: {
+    name: 'Python',
+    files: {
+      'python/README.md': '# Python\n\nPython workspace.\n',
+      'python/main.py':
+        "def main():\n    print('Hello from Python')\n\n\nif __name__ == '__main__':\n    main()\n",
+      'python/requirements.txt': '',
+    },
+  },
+  java: {
+    name: 'Java',
+    files: {
+      'java/src/Main.java':
+        'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java");\n    }\n}\n',
+    },
+  },
+  csharp: {
+    name: 'C#',
+    files: {
+      'csharp/Program.cs': 'Console.WriteLine("Hello from C#");\n',
+      'csharp/README.md': '# C#\n\nRun dotnet new console if you want a full project file.\n',
+    },
+  },
+  cpp: {
+    name: 'C / C++',
+    files: {
+      'cpp/main.cpp':
+        '#include <iostream>\n\nint main() {\n    std::cout << "Hello from C++" << std::endl;\n    return 0;\n}\n',
+      'cpp/CMakeLists.txt': (name) =>
+        'cmake_minimum_required(VERSION 3.16)\nproject(' +
+        name.replace(/[^A-Za-z0-9_]/g, '_') +
+        '_cpp)\nset(CMAKE_CXX_STANDARD 17)\nadd_executable(app main.cpp)\n',
+    },
+  },
+  go: {
+    name: 'Go',
+    files: {
+      'go/go.mod': (name) => 'module ' + name.replace(/[^a-zA-Z0-9_-]/g, '-') + '/go\n\ngo 1.22\n',
+      'go/main.go':
+        'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Hello from Go")\n}\n',
+    },
+  },
+  rust: {
+    name: 'Rust',
+    files: {
+      'rust/Cargo.toml': (name) =>
+        '[package]\nname = "' +
+        name.replace(/[^a-zA-Z0-9_-]/g, '-') +
+        '-rust"\nversion = "0.1.0"\nedition = "2021"\n',
+      'rust/src/main.rs': 'fn main() {\n    println!("Hello from Rust");\n}\n',
+    },
+  },
   php: { name: 'PHP', files: { 'php/index.php': "<?php\necho 'Hello from PHP';\n" } },
   ruby: { name: 'Ruby', files: { 'ruby/main.rb': "puts 'Hello from Ruby'\n" } },
-  dart: { name: 'Dart', files: { 'dart/main.dart': "void main() {\n  print('Hello from Dart');\n}\n" } },
-  kotlin: { name: 'Kotlin', files: { 'kotlin/Main.kt': "fun main() {\n    println(\"Hello from Kotlin\")\n}\n" } },
-  swift: { name: 'Swift', files: { 'swift/main.swift': "print(\"Hello from Swift\")\n" } },
-  verilog: { name: 'Verilog', files: { 'verilog/top.v': "module top;\n  initial begin\n    $display(\"Hello from Verilog\");\n  end\nendmodule\n" } },
-  sql: { name: 'SQL', files: { 'sql/schema.sql': "CREATE TABLE example (\n  id INTEGER PRIMARY KEY,\n  name TEXT NOT NULL\n);\n", 'sql/query.sql': 'SELECT * FROM example;\n' } },
-  powershell: { name: 'PowerShell', files: { 'powershell/main.ps1': "Write-Host 'Hello from PowerShell'\n" } },
-  htmlcss: { name: 'HTML / CSS', files: { 'web/index.html': '<!doctype html>\n<html><head><meta charset="utf-8"><title>Web Workspace</title><link rel="stylesheet" href="styles.css"></head><body><main><h1>Hello Web</h1></main><script src="app.js"></script></body></html>\n', 'web/styles.css': 'body { font-family: system-ui, sans-serif; margin: 40px; }\n', 'web/app.js': "console.log('Hello Web');\n" } },
-  arduino: { name: 'Arduino', files: { 'sketch/sketch.ino': "// Arduino sketch - blink the on-board LED\nconst int LED_PIN = 13;\n\nvoid setup() {\n  pinMode(LED_PIN, OUTPUT);\n  Serial.begin(9600);\n}\n\nvoid loop() {\n  digitalWrite(LED_PIN, HIGH);\n  delay(500);\n  digitalWrite(LED_PIN, LOW);\n  delay(500);\n}\n", 'README.md': '# Arduino\n\nThe sketch lives in ./sketch (arduino-cli needs the folder name to match the .ino).\nIn VS Code: Terminal > Run Build Task to compile (arduino-cli, board arduino:avr:uno).\nFor upload, edit the COM port in .vscode/tasks.json.\n' } },
-  vhdl: { name: 'VHDL', files: { 'vhdl/top.vhd': "library IEEE;\nuse IEEE.STD_LOGIC_1164.ALL;\n\nentity top is\n  port (\n    clk : in  STD_LOGIC;\n    rst : in  STD_LOGIC;\n    led : out STD_LOGIC\n  );\nend top;\n\narchitecture Behavioral of top is\n  -- internal signal: an 'out' port cannot be read back in plain VHDL\n  signal led_i : STD_LOGIC := '0';\nbegin\n  led <= led_i;\n  process(clk, rst)\n  begin\n    if rst = '1' then\n      led_i <= '0';\n    elsif rising_edge(clk) then\n      led_i <= not led_i;\n    end if;\n  end process;\nend Behavioral;\n" } },
-  matlab: { name: 'MATLAB', files: { 'matlab/main.m': "% MATLAB workspace - plot a sine wave\nfs = 1000;          % sampling frequency (Hz)\nt = 0:1/fs:1;       % time vector\nf = 5;              % signal frequency (Hz)\nx = sin(2*pi*f*t);\nplot(t, x);\nxlabel('Time (s)');\nylabel('Amplitude');\ntitle('Sine wave');\ngrid on;\n", 'matlab/README.md': '# MATLAB\n\nRun main.m in MATLAB or GNU Octave.\n' } },
+  dart: {
+    name: 'Dart',
+    files: { 'dart/main.dart': "void main() {\n  print('Hello from Dart');\n}\n" },
+  },
+  kotlin: {
+    name: 'Kotlin',
+    files: { 'kotlin/Main.kt': 'fun main() {\n    println("Hello from Kotlin")\n}\n' },
+  },
+  swift: { name: 'Swift', files: { 'swift/main.swift': 'print("Hello from Swift")\n' } },
+  verilog: {
+    name: 'Verilog',
+    files: {
+      'verilog/top.v':
+        'module top;\n  initial begin\n    $display("Hello from Verilog");\n  end\nendmodule\n',
+    },
+  },
+  sql: {
+    name: 'SQL',
+    files: {
+      'sql/schema.sql':
+        'CREATE TABLE example (\n  id INTEGER PRIMARY KEY,\n  name TEXT NOT NULL\n);\n',
+      'sql/query.sql': 'SELECT * FROM example;\n',
+    },
+  },
+  powershell: {
+    name: 'PowerShell',
+    files: { 'powershell/main.ps1': "Write-Host 'Hello from PowerShell'\n" },
+  },
+  htmlcss: {
+    name: 'HTML / CSS',
+    files: {
+      'web/index.html':
+        '<!doctype html>\n<html><head><meta charset="utf-8"><title>Web Workspace</title><link rel="stylesheet" href="styles.css"></head><body><main><h1>Hello Web</h1></main><script src="app.js"></script></body></html>\n',
+      'web/styles.css': 'body { font-family: system-ui, sans-serif; margin: 40px; }\n',
+      'web/app.js': "console.log('Hello Web');\n",
+    },
+  },
+  arduino: {
+    name: 'Arduino',
+    files: {
+      'sketch/sketch.ino':
+        '// Arduino sketch - blink the on-board LED\nconst int LED_PIN = 13;\n\nvoid setup() {\n  pinMode(LED_PIN, OUTPUT);\n  Serial.begin(9600);\n}\n\nvoid loop() {\n  digitalWrite(LED_PIN, HIGH);\n  delay(500);\n  digitalWrite(LED_PIN, LOW);\n  delay(500);\n}\n',
+      'README.md':
+        '# Arduino\n\nThe sketch lives in ./sketch (arduino-cli needs the folder name to match the .ino).\nIn VS Code: Terminal > Run Build Task to compile (arduino-cli, board arduino:avr:uno).\nFor upload, edit the COM port in .vscode/tasks.json.\n',
+    },
+  },
+  vhdl: {
+    name: 'VHDL',
+    files: {
+      'vhdl/top.vhd':
+        "library IEEE;\nuse IEEE.STD_LOGIC_1164.ALL;\n\nentity top is\n  port (\n    clk : in  STD_LOGIC;\n    rst : in  STD_LOGIC;\n    led : out STD_LOGIC\n  );\nend top;\n\narchitecture Behavioral of top is\n  -- internal signal: an 'out' port cannot be read back in plain VHDL\n  signal led_i : STD_LOGIC := '0';\nbegin\n  led <= led_i;\n  process(clk, rst)\n  begin\n    if rst = '1' then\n      led_i <= '0';\n    elsif rising_edge(clk) then\n      led_i <= not led_i;\n    end if;\n  end process;\nend Behavioral;\n",
+    },
+  },
+  matlab: {
+    name: 'MATLAB',
+    files: {
+      'matlab/main.m':
+        "% MATLAB workspace - plot a sine wave\nfs = 1000;          % sampling frequency (Hz)\nt = 0:1/fs:1;       % time vector\nf = 5;              % signal frequency (Hz)\nx = sin(2*pi*f*t);\nplot(t, x);\nxlabel('Time (s)');\nylabel('Amplitude');\ntitle('Sine wave');\ngrid on;\n",
+      'matlab/README.md': '# MATLAB\n\nRun main.m in MATLAB or GNU Octave.\n',
+    },
+  },
 };
 
 // VS Code build configs embedded into EE templates so new projects compile out of the box.
@@ -85,38 +212,274 @@ const LANGUAGE_MODULES = {
 // workspaceFolder, so relative paths work; tools (arduino-cli, iverilog, ghdl, arm-none-eabi-gcc,
 // octave) are expected on PATH after the toolchain install.
 const VSCODE = {
-  arduino: '{\n  "version": "2.0.0",\n  "tasks": [\n    {\n      "label": "Arduino: Compile (Uno)",\n      "type": "shell",\n      "command": "arduino-cli",\n      "args": ["compile", "--fqbn", "arduino:avr:uno", "${workspaceFolder}/sketch"],\n      "group": { "kind": "build", "isDefault": true },\n      "problemMatcher": ["$gcc"]\n    },\n    {\n      "label": "Arduino: Upload (Uno - edit COM port)",\n      "type": "shell",\n      "command": "arduino-cli",\n      "args": ["upload", "-p", "COM3", "--fqbn", "arduino:avr:uno", "${workspaceFolder}/sketch"],\n      "problemMatcher": []\n    }\n  ]\n}\n',
-  verilog: '{\n  "version": "2.0.0",\n  "tasks": [\n    {\n      "label": "Verilog: Compile (iverilog)",\n      "type": "shell",\n      "command": "iverilog",\n      "args": ["-o", "sim.out", "verilog/top.v", "verilog/tb_top.v"],\n      "group": { "kind": "build", "isDefault": true },\n      "problemMatcher": []\n    },\n    {\n      "label": "Verilog: Run (vvp)",\n      "type": "shell",\n      "command": "vvp",\n      "args": ["sim.out"],\n      "dependsOn": "Verilog: Compile (iverilog)",\n      "problemMatcher": []\n    }\n  ]\n}\n',
+  arduino:
+    '{\n  "version": "2.0.0",\n  "tasks": [\n    {\n      "label": "Arduino: Compile (Uno)",\n      "type": "shell",\n      "command": "arduino-cli",\n      "args": ["compile", "--fqbn", "arduino:avr:uno", "${workspaceFolder}/sketch"],\n      "group": { "kind": "build", "isDefault": true },\n      "problemMatcher": ["$gcc"]\n    },\n    {\n      "label": "Arduino: Upload (Uno - edit COM port)",\n      "type": "shell",\n      "command": "arduino-cli",\n      "args": ["upload", "-p", "COM3", "--fqbn", "arduino:avr:uno", "${workspaceFolder}/sketch"],\n      "problemMatcher": []\n    }\n  ]\n}\n',
+  verilog:
+    '{\n  "version": "2.0.0",\n  "tasks": [\n    {\n      "label": "Verilog: Compile (iverilog)",\n      "type": "shell",\n      "command": "iverilog",\n      "args": ["-o", "sim.out", "verilog/top.v", "verilog/tb_top.v"],\n      "group": { "kind": "build", "isDefault": true },\n      "problemMatcher": []\n    },\n    {\n      "label": "Verilog: Run (vvp)",\n      "type": "shell",\n      "command": "vvp",\n      "args": ["sim.out"],\n      "dependsOn": "Verilog: Compile (iverilog)",\n      "problemMatcher": []\n    }\n  ]\n}\n',
   vhdl: '{\n  "version": "2.0.0",\n  "tasks": [\n    {\n      "label": "VHDL: Analyze + Elaborate (GHDL)",\n      "type": "shell",\n      "command": "ghdl",\n      "args": ["-a", "vhdl/top.vhd"],\n      "group": { "kind": "build", "isDefault": true },\n      "problemMatcher": []\n    }\n  ]\n}\n',
-  octave: '{\n  "version": "2.0.0",\n  "tasks": [\n    {\n      "label": "Octave: Run main.m",\n      "type": "shell",\n      "command": "octave",\n      "args": ["--no-gui", "matlab/main.m"],\n      "group": { "kind": "build", "isDefault": true },\n      "problemMatcher": []\n    }\n  ]\n}\n',
-  stm32Tasks: '{\n  "version": "2.0.0",\n  "tasks": [\n    {\n      "label": "STM32: Compile (arm-none-eabi-gcc)",\n      "type": "shell",\n      "command": "arm-none-eabi-gcc",\n      "args": ["-c", "-mcpu=cortex-m4", "-mthumb", "-Wall", "src/main.c", "-o", "build/main.o"],\n      "group": { "kind": "build", "isDefault": true },\n      "problemMatcher": ["$gcc"]\n    }\n  ]\n}\n',
-  stm32CppProps: '{\n  "version": 4,\n  "configurations": [\n    {\n      "name": "STM32",\n      "includePath": ["${workspaceFolder}/**"],\n      "compilerPath": "arm-none-eabi-gcc",\n      "cStandard": "c11",\n      "intelliSenseMode": "gcc-arm"\n    }\n  ]\n}\n',
+  octave:
+    '{\n  "version": "2.0.0",\n  "tasks": [\n    {\n      "label": "Octave: Run main.m",\n      "type": "shell",\n      "command": "octave",\n      "args": ["--no-gui", "matlab/main.m"],\n      "group": { "kind": "build", "isDefault": true },\n      "problemMatcher": []\n    }\n  ]\n}\n',
+  stm32Tasks:
+    '{\n  "version": "2.0.0",\n  "tasks": [\n    {\n      "label": "STM32: Compile (arm-none-eabi-gcc)",\n      "type": "shell",\n      "command": "arm-none-eabi-gcc",\n      "args": ["-c", "-mcpu=cortex-m4", "-mthumb", "-Wall", "src/main.c", "-o", "build/main.o"],\n      "group": { "kind": "build", "isDefault": true },\n      "problemMatcher": ["$gcc"]\n    }\n  ]\n}\n',
+  stm32CppProps:
+    '{\n  "version": 4,\n  "configurations": [\n    {\n      "name": "STM32",\n      "includePath": ["${workspaceFolder}/**"],\n      "compilerPath": "arm-none-eabi-gcc",\n      "cStandard": "c11",\n      "intelliSenseMode": "gcc-arm"\n    }\n  ]\n}\n',
 };
 
 const PROJECT_TEMPLATES = [
-  { id: 'react-vite', name: 'React / Vite', description: 'Frontend React app with Vite.', devCommand: 'npm run dev', moduleIds: [], files: { 'package.json': (name) => JSON.stringify({ scripts: { dev: 'vite --host 127.0.0.1', build: 'vite build', preview: 'vite preview' }, dependencies: { '@vitejs/plugin-react': '^4.3.4', vite: '^6.0.7', react: '^18.3.1', 'react-dom': '^18.3.1' }, devDependencies: {}, private: true, name, version: '0.1.0' }, null, 2), 'index.html': '<div id="root"></div><script type="module" src="/src/App.jsx"></script>\n', 'src/App.jsx': "export default function App() {\n  return <main><h1>Hello React workspace</h1></main>;\n}\n" } },
-  { id: 'electron', name: 'Electron App', description: 'Minimal Electron desktop app.', devCommand: 'npm run dev', moduleIds: [], files: { 'package.json': (name) => JSON.stringify({ scripts: { dev: 'electron .' }, devDependencies: { electron: '^42.4.1' }, private: true, main: 'main.js', name, version: '0.1.0' }, null, 2), 'main.js': "const { app, BrowserWindow } = require('electron');\n\napp.whenReady().then(() => {\n  const win = new BrowserWindow({ width: 1000, height: 700 });\n  win.loadFile('index.html');\n});\n", 'index.html': '<h1>Hello Electron</h1>\n' } },
-  { id: 'python', name: 'Python', description: 'Python script workspace.', devCommand: '', moduleIds: ['python'], files: {} },
-  { id: 'javascript', name: 'JavaScript', description: 'Node.js JavaScript workspace.', devCommand: '', moduleIds: ['javascript'], files: {} },
-  { id: 'typescript', name: 'TypeScript', description: 'TypeScript workspace.', devCommand: '', moduleIds: ['typescript'], files: {} },
-  { id: 'java', name: 'Java', description: 'Java starter workspace.', devCommand: '', moduleIds: ['java'], files: {} },
-  { id: 'csharp', name: 'C#', description: 'C# starter workspace.', devCommand: '', moduleIds: ['csharp'], files: {} },
-  { id: 'cpp', name: 'C / C++', description: 'C++ starter workspace with CMake.', devCommand: '', moduleIds: ['cpp'], files: {} },
-  { id: 'go', name: 'Go', description: 'Go module workspace.', devCommand: '', moduleIds: ['go'], files: {} },
-  { id: 'rust', name: 'Rust', description: 'Rust Cargo workspace.', devCommand: '', moduleIds: ['rust'], files: {} },
-  { id: 'web', name: 'HTML / CSS / JS', description: 'Static web workspace.', devCommand: '', moduleIds: ['htmlcss'], files: {} },
-  { id: 'data-stack', name: 'Python + SQL', description: 'Data scripting workspace.', devCommand: '', moduleIds: ['python', 'sql'], files: {} },
-  { id: 'fullstack-js', name: 'TypeScript + Web', description: 'TypeScript and web starter workspace.', devCommand: '', moduleIds: ['typescript', 'htmlcss'], files: {} },
-  { id: 'hardware', name: 'C++ + Verilog', description: 'Hardware / firmware starter workspace.', devCommand: '', moduleIds: ['cpp', 'verilog'], files: {} },
-  { id: 'arduino', name: 'Arduino / 微控制器', description: 'Arduino / microcontroller sketch workspace.', devCommand: '', moduleIds: ['arduino'], files: { '.vscode/tasks.json': VSCODE.arduino } },
-  { id: 'fpga-verilog', name: 'FPGA / Verilog', description: 'Verilog RTL + testbench for Quartus / Vivado.', devCommand: '', moduleIds: ['verilog'], files: { 'verilog/tb_top.v': "`timescale 1ns/1ps\nmodule tb_top;\n  reg clk = 0;\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile(\"tb_top.vcd\");\n    $dumpvars(0, tb_top);\n    #100 $finish;\n  end\nendmodule\n", 'README.md': (name) => '# ' + name + '\n\nVerilog RTL in verilog/top.v with a testbench in verilog/tb_top.v.\nSynthesize in Quartus / Vivado; simulate with ModelSim / Icarus Verilog.\nIn VS Code: Run Build Task to compile + simulate (iverilog), then "Verilog: Run (vvp)".\n', '.vscode/tasks.json': VSCODE.verilog } },
-  { id: 'fpga-vhdl', name: 'FPGA / VHDL', description: 'VHDL RTL workspace for Quartus / Vivado.', devCommand: '', moduleIds: ['vhdl'], files: { '.vscode/tasks.json': VSCODE.vhdl } },
-  { id: 'matlab', name: 'MATLAB / 訊號處理', description: 'MATLAB / Octave scripting workspace.', devCommand: '', moduleIds: ['matlab'], files: { '.vscode/tasks.json': VSCODE.octave } },
-  { id: 'embedded-c', name: 'STM32 / 嵌入式 C', description: 'Bare-metal embedded C workspace.', devCommand: '', moduleIds: [], files: { 'src/main.c': "#include <stdint.h>\n\nint main(void) {\n    /* TODO: init clocks, GPIO and peripherals */\n    for (;;) {\n        /* main loop */\n    }\n    return 0;\n}\n", 'build/.gitkeep': '', '.vscode/tasks.json': VSCODE.stm32Tasks, '.vscode/c_cpp_properties.json': VSCODE.stm32CppProps, 'README.md': (name) => '# ' + name + '\n\nBare-metal embedded C. In VS Code: Run Build Task to compile src/main.c to build/main.o with arm-none-eabi-gcc.\nFull firmware (linking) needs a startup file + linker script for your specific MCU; flashing uses OpenOCD or STM32CubeIDE.\n' } },
-  { id: 'kicad', name: 'KiCad PCB 專案', description: 'KiCad PCB project scaffold (folders + notes).', devCommand: '', moduleIds: [], files: { 'README.md': (name) => '# ' + name + '\n\nKiCad PCB project. Create the .kicad_pro / .kicad_sch / .kicad_pcb here in KiCad.\n\n- datasheets/ - component datasheets\n- gerbers/ - fabrication output\n- sim/ - SPICE simulations\n', 'datasheets/.gitkeep': '', 'gerbers/.gitkeep': '', 'sim/.gitkeep': '' } },
-  { id: 'documents', name: 'Documents', description: 'Reports, notes, assets, and exports.', devCommand: '', moduleIds: [], files: { 'README.md': (name) => '# ' + name + '\n\nDocument workspace.\n', 'notes/.gitkeep': '', 'exports/.gitkeep': '', 'assets/.gitkeep': '' } },
-  { id: 'custom-combo', name: 'Custom Combo', description: 'Choose any language modules to combine.', devCommand: '', moduleIds: [], files: {} },
-  { id: 'custom-folder', name: 'Custom Folder', description: 'Clean empty workspace folder.', devCommand: '', moduleIds: [], files: { 'README.md': (name) => '# ' + name + '\n' } },
+  {
+    id: 'react-vite',
+    name: 'React / Vite',
+    description: 'Frontend React app with Vite.',
+    devCommand: 'npm run dev',
+    moduleIds: [],
+    files: {
+      'package.json': (name) =>
+        JSON.stringify(
+          {
+            scripts: { dev: 'vite --host 127.0.0.1', build: 'vite build', preview: 'vite preview' },
+            dependencies: {
+              '@vitejs/plugin-react': '^4.3.4',
+              vite: '^6.0.7',
+              react: '^18.3.1',
+              'react-dom': '^18.3.1',
+            },
+            devDependencies: {},
+            private: true,
+            name,
+            version: '0.1.0',
+          },
+          null,
+          2,
+        ),
+      'index.html': '<div id="root"></div><script type="module" src="/src/App.jsx"></script>\n',
+      'src/App.jsx':
+        'export default function App() {\n  return <main><h1>Hello React workspace</h1></main>;\n}\n',
+    },
+  },
+  {
+    id: 'electron',
+    name: 'Electron App',
+    description: 'Minimal Electron desktop app.',
+    devCommand: 'npm run dev',
+    moduleIds: [],
+    files: {
+      'package.json': (name) =>
+        JSON.stringify(
+          {
+            scripts: { dev: 'electron .' },
+            devDependencies: { electron: '^42.4.1' },
+            private: true,
+            main: 'main.js',
+            name,
+            version: '0.1.0',
+          },
+          null,
+          2,
+        ),
+      'main.js':
+        "const { app, BrowserWindow } = require('electron');\n\napp.whenReady().then(() => {\n  const win = new BrowserWindow({ width: 1000, height: 700 });\n  win.loadFile('index.html');\n});\n",
+      'index.html': '<h1>Hello Electron</h1>\n',
+    },
+  },
+  {
+    id: 'python',
+    name: 'Python',
+    description: 'Python script workspace.',
+    devCommand: '',
+    moduleIds: ['python'],
+    files: {},
+  },
+  {
+    id: 'javascript',
+    name: 'JavaScript',
+    description: 'Node.js JavaScript workspace.',
+    devCommand: '',
+    moduleIds: ['javascript'],
+    files: {},
+  },
+  {
+    id: 'typescript',
+    name: 'TypeScript',
+    description: 'TypeScript workspace.',
+    devCommand: '',
+    moduleIds: ['typescript'],
+    files: {},
+  },
+  {
+    id: 'java',
+    name: 'Java',
+    description: 'Java starter workspace.',
+    devCommand: '',
+    moduleIds: ['java'],
+    files: {},
+  },
+  {
+    id: 'csharp',
+    name: 'C#',
+    description: 'C# starter workspace.',
+    devCommand: '',
+    moduleIds: ['csharp'],
+    files: {},
+  },
+  {
+    id: 'cpp',
+    name: 'C / C++',
+    description: 'C++ starter workspace with CMake.',
+    devCommand: '',
+    moduleIds: ['cpp'],
+    files: {},
+  },
+  {
+    id: 'go',
+    name: 'Go',
+    description: 'Go module workspace.',
+    devCommand: '',
+    moduleIds: ['go'],
+    files: {},
+  },
+  {
+    id: 'rust',
+    name: 'Rust',
+    description: 'Rust Cargo workspace.',
+    devCommand: '',
+    moduleIds: ['rust'],
+    files: {},
+  },
+  {
+    id: 'web',
+    name: 'HTML / CSS / JS',
+    description: 'Static web workspace.',
+    devCommand: '',
+    moduleIds: ['htmlcss'],
+    files: {},
+  },
+  {
+    id: 'data-stack',
+    name: 'Python + SQL',
+    description: 'Data scripting workspace.',
+    devCommand: '',
+    moduleIds: ['python', 'sql'],
+    files: {},
+  },
+  {
+    id: 'fullstack-js',
+    name: 'TypeScript + Web',
+    description: 'TypeScript and web starter workspace.',
+    devCommand: '',
+    moduleIds: ['typescript', 'htmlcss'],
+    files: {},
+  },
+  {
+    id: 'hardware',
+    name: 'C++ + Verilog',
+    description: 'Hardware / firmware starter workspace.',
+    devCommand: '',
+    moduleIds: ['cpp', 'verilog'],
+    files: {},
+  },
+  {
+    id: 'arduino',
+    name: 'Arduino / 微控制器',
+    description: 'Arduino / microcontroller sketch workspace.',
+    devCommand: '',
+    moduleIds: ['arduino'],
+    files: { '.vscode/tasks.json': VSCODE.arduino },
+  },
+  {
+    id: 'fpga-verilog',
+    name: 'FPGA / Verilog',
+    description: 'Verilog RTL + testbench for Quartus / Vivado.',
+    devCommand: '',
+    moduleIds: ['verilog'],
+    files: {
+      'verilog/tb_top.v':
+        '`timescale 1ns/1ps\nmodule tb_top;\n  reg clk = 0;\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile("tb_top.vcd");\n    $dumpvars(0, tb_top);\n    #100 $finish;\n  end\nendmodule\n',
+      'README.md': (name) =>
+        '# ' +
+        name +
+        '\n\nVerilog RTL in verilog/top.v with a testbench in verilog/tb_top.v.\nSynthesize in Quartus / Vivado; simulate with ModelSim / Icarus Verilog.\nIn VS Code: Run Build Task to compile + simulate (iverilog), then "Verilog: Run (vvp)".\n',
+      '.vscode/tasks.json': VSCODE.verilog,
+    },
+  },
+  {
+    id: 'fpga-vhdl',
+    name: 'FPGA / VHDL',
+    description: 'VHDL RTL workspace for Quartus / Vivado.',
+    devCommand: '',
+    moduleIds: ['vhdl'],
+    files: { '.vscode/tasks.json': VSCODE.vhdl },
+  },
+  {
+    id: 'matlab',
+    name: 'MATLAB / 訊號處理',
+    description: 'MATLAB / Octave scripting workspace.',
+    devCommand: '',
+    moduleIds: ['matlab'],
+    files: { '.vscode/tasks.json': VSCODE.octave },
+  },
+  {
+    id: 'embedded-c',
+    name: 'STM32 / 嵌入式 C',
+    description: 'Bare-metal embedded C workspace.',
+    devCommand: '',
+    moduleIds: [],
+    files: {
+      'src/main.c':
+        '#include <stdint.h>\n\nint main(void) {\n    /* TODO: init clocks, GPIO and peripherals */\n    for (;;) {\n        /* main loop */\n    }\n    return 0;\n}\n',
+      'build/.gitkeep': '',
+      '.vscode/tasks.json': VSCODE.stm32Tasks,
+      '.vscode/c_cpp_properties.json': VSCODE.stm32CppProps,
+      'README.md': (name) =>
+        '# ' +
+        name +
+        '\n\nBare-metal embedded C. In VS Code: Run Build Task to compile src/main.c to build/main.o with arm-none-eabi-gcc.\nFull firmware (linking) needs a startup file + linker script for your specific MCU; flashing uses OpenOCD or STM32CubeIDE.\n',
+    },
+  },
+  {
+    id: 'kicad',
+    name: 'KiCad PCB 專案',
+    description: 'KiCad PCB project scaffold (folders + notes).',
+    devCommand: '',
+    moduleIds: [],
+    files: {
+      'README.md': (name) =>
+        '# ' +
+        name +
+        '\n\nKiCad PCB project. Create the .kicad_pro / .kicad_sch / .kicad_pcb here in KiCad.\n\n- datasheets/ - component datasheets\n- gerbers/ - fabrication output\n- sim/ - SPICE simulations\n',
+      'datasheets/.gitkeep': '',
+      'gerbers/.gitkeep': '',
+      'sim/.gitkeep': '',
+    },
+  },
+  {
+    id: 'documents',
+    name: 'Documents',
+    description: 'Reports, notes, assets, and exports.',
+    devCommand: '',
+    moduleIds: [],
+    files: {
+      'README.md': (name) => '# ' + name + '\n\nDocument workspace.\n',
+      'notes/.gitkeep': '',
+      'exports/.gitkeep': '',
+      'assets/.gitkeep': '',
+    },
+  },
+  {
+    id: 'custom-combo',
+    name: 'Custom Combo',
+    description: 'Choose any language modules to combine.',
+    devCommand: '',
+    moduleIds: [],
+    files: {},
+  },
+  {
+    id: 'custom-folder',
+    name: 'Custom Folder',
+    description: 'Clean empty workspace folder.',
+    devCommand: '',
+    moduleIds: [],
+    files: { 'README.md': (name) => '# ' + name + '\n' },
+  },
 ];
 
 const CODE_FILTERS = new Set([
@@ -133,26 +496,99 @@ const CODE_FILTERS = new Set([
 ]);
 
 const SOURCE_EXTS = new Set([
-  '.html', '.css', '.scss', '.sass', '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.astro',
-  '.json', '.mjs', '.cjs',
-  '.py', '.ipynb',
-  '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.hh', '.ino',
-  '.java', '.kt', '.kts',
-  '.cs', '.csproj', '.sln',
-  '.v', '.sv', '.vh', '.vhd', '.vhdl',
-  '.go', '.rs', '.php', '.rb', '.swift', '.dart', '.lua', '.r', '.m', '.scala', '.pl',
-  '.sh', '.bat', '.ps1', '.sql', '.asm', '.s',
+  '.html',
+  '.css',
+  '.scss',
+  '.sass',
+  '.js',
+  '.jsx',
+  '.ts',
+  '.tsx',
+  '.vue',
+  '.svelte',
+  '.astro',
+  '.json',
+  '.mjs',
+  '.cjs',
+  '.py',
+  '.ipynb',
+  '.c',
+  '.cpp',
+  '.cc',
+  '.cxx',
+  '.h',
+  '.hpp',
+  '.hh',
+  '.ino',
+  '.java',
+  '.kt',
+  '.kts',
+  '.cs',
+  '.csproj',
+  '.sln',
+  '.v',
+  '.sv',
+  '.vh',
+  '.vhd',
+  '.vhdl',
+  '.go',
+  '.rs',
+  '.php',
+  '.rb',
+  '.swift',
+  '.dart',
+  '.lua',
+  '.r',
+  '.m',
+  '.scala',
+  '.pl',
+  '.sh',
+  '.bat',
+  '.ps1',
+  '.sql',
+  '.asm',
+  '.s',
 ]);
 
 const REPORT_EXTS = new Set(['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']);
-const MEDIA_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.mp4', '.mov', '.avi', '.mkv']);
+const MEDIA_EXTS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.svg',
+  '.mp4',
+  '.mov',
+  '.avi',
+  '.mkv',
+]);
 const TOOL_EXTS = new Set(['.exe', '.msi', '.lnk', '.bat', '.cmd']);
 
 const HOMEWORK_KEYWORDS = [
-  'homework', '作業', '報告', 'lab', '實驗', 'calculus', 'physics', '電路', 'circuit',
-  '1140570', '考試', '英文',
+  'homework',
+  '作業',
+  '報告',
+  'lab',
+  '實驗',
+  'calculus',
+  'physics',
+  '電路',
+  'circuit',
+  '1140570',
+  '考試',
+  '英文',
 ];
-const GAME_KEYWORDS = ['steam', 'garena', 'curseforge', 'slay the spire', 'minecraft', 'game', '遊戲'];
+const GAME_KEYWORDS = [
+  'steam',
+  'garena',
+  'curseforge',
+  'slay the spire',
+  'minecraft',
+  'game',
+  '遊戲',
+];
 const TOOL_KEYWORDS = ['installer', 'setup', 'shortcut', 'tool', 'tools', 'app', 'utility', '工具'];
 const BACKUP_KEYWORDS = ['backup', '備份', 'aomei'];
 
@@ -237,13 +673,16 @@ function defaultScanRoots() {
 }
 
 function safeFolderName(name) {
-  return String(name || 'new-workspace')
-    .trim()
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 80) || 'new-workspace';
+  return (
+    String(name || 'new-workspace')
+      .trim()
+      // eslint-disable-next-line no-control-regex -- strip Windows-illegal filename chars incl. control codes
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 80) || 'new-workspace'
+  );
 }
 
 async function writeTemplateFile(root, relativePath, content) {
@@ -260,7 +699,9 @@ function publicTemplate(template) {
     description: template.description,
     devCommand: template.devCommand || '',
     moduleIds: template.moduleIds || [],
-    modules: (template.moduleIds || []).map((id) => LANGUAGE_MODULES[id] && LANGUAGE_MODULES[id].name).filter(Boolean),
+    modules: (template.moduleIds || [])
+      .map((id) => LANGUAGE_MODULES[id] && LANGUAGE_MODULES[id].name)
+      .filter(Boolean),
     fileCount: Object.keys(template.files || {}).length,
     files: Object.keys(template.files || {}),
   };
@@ -271,7 +712,9 @@ function languageOptions() {
 }
 
 function selectedModuleIds(template, payload = {}) {
-  const requested = Array.isArray(payload.languageIds) ? payload.languageIds.filter((id) => LANGUAGE_MODULES[id]) : [];
+  const requested = Array.isArray(payload.languageIds)
+    ? payload.languageIds.filter((id) => LANGUAGE_MODULES[id])
+    : [];
   if (requested.length) return Array.from(new Set(requested));
   return Array.from(new Set((template.moduleIds || []).filter((id) => LANGUAGE_MODULES[id])));
 }
@@ -283,17 +726,22 @@ function filesForTemplate(template, moduleIds, workspaceName) {
   }
   if (moduleIds.length) {
     const names = moduleIds.map((id) => LANGUAGE_MODULES[id].name).join(', ');
-    files['README.md'] = files['README.md'] || ((name) => '# ' + name + '\n\nLanguages: ' + names + '\n');
+    files['README.md'] =
+      files['README.md'] || ((name) => '# ' + name + '\n\nLanguages: ' + names + '\n');
   }
   return files;
 }
 
 async function createFromTemplate(config, payload = {}) {
   const startedAt = Date.now();
-  const template = PROJECT_TEMPLATES.find((item) => item.id === payload.templateId) || PROJECT_TEMPLATES[0];
+  const template =
+    PROJECT_TEMPLATES.find((item) => item.id === payload.templateId) || PROJECT_TEMPLATES[0];
   const moduleIds = selectedModuleIds(template, payload);
   const name = safeFolderName(payload.name || template.name);
-  const baseDir = payload.baseDir || (normalizeProjectHub(config).scanRoots[0] || safeAppPath('desktop', 'Desktop'));
+  const baseDir =
+    payload.baseDir ||
+    normalizeProjectHub(config).scanRoots[0] ||
+    safeAppPath('desktop', 'Desktop');
   const target = path.join(baseDir, name);
 
   if (!isDirectory(baseDir)) return { ok: false, error: `Base folder not found: ${baseDir}` };
@@ -301,10 +749,12 @@ async function createFromTemplate(config, payload = {}) {
 
   const files = filesForTemplate(template, moduleIds, name);
   await fs.promises.mkdir(target, { recursive: true });
-  const writtenFiles = await Promise.all(Object.entries(files).map(async ([relativePath, writer]) => {
-    const content = typeof writer === 'function' ? writer(name) : writer;
-    return writeTemplateFile(target, relativePath, content);
-  }));
+  const writtenFiles = await Promise.all(
+    Object.entries(files).map(async ([relativePath, writer]) => {
+      const content = typeof writer === 'function' ? writer(name) : writer;
+      return writeTemplateFile(target, relativePath, content);
+    }),
+  );
 
   return {
     ok: true,
@@ -323,7 +773,8 @@ async function createFromTemplate(config, payload = {}) {
 }
 
 function normalizeProjectHub(config) {
-  const raw = config && config.projectHub && typeof config.projectHub === 'object' ? config.projectHub : {};
+  const raw =
+    config && config.projectHub && typeof config.projectHub === 'object' ? config.projectHub : {};
   const hasScanRoots = Array.isArray(raw.scanRoots);
   const scanRoots = hasScanRoots ? raw.scanRoots : defaultScanRoots();
   const excludeFolders = Array.isArray(raw.excludeFolders) ? raw.excludeFolders : DEFAULT_EXCLUDES;
@@ -331,7 +782,8 @@ function normalizeProjectHub(config) {
   const pinnedProjects = Array.isArray(raw.pinnedProjects)
     ? raw.pinnedProjects
         .map((item) => {
-          if (typeof item === 'string') return { path: item, name: path.basename(item), isFile: false };
+          if (typeof item === 'string')
+            return { path: item, name: path.basename(item), isFile: false };
           if (!item || typeof item !== 'object' || !item.path) return null;
           return {
             name: item.name || path.basename(item.path),
@@ -510,7 +962,10 @@ async function readPackageInfo(dir, hasPackageJson) {
       deps,
       scripts,
       scriptNames: Object.keys(scripts),
-      hasElectron: !!deps.electron || !!deps['electron-builder'] || /electron/i.test(String(parsed.main || '')),
+      hasElectron:
+        !!deps.electron ||
+        !!deps['electron-builder'] ||
+        /electron/i.test(String(parsed.main || '')),
       hasReact: !!deps.react || !!deps['@vitejs/plugin-react'],
       hasVite: !!deps.vite || !!deps['@vitejs/plugin-react'] || !!deps['@vitejs/plugin-vue'],
       hasDevScript: !!scripts.dev,
@@ -543,7 +998,9 @@ function directMarkers(entries) {
     hasMakefile: names.has('makefile'),
     hasPom: names.has('pom.xml'),
     hasGradle: names.has('build.gradle') || names.has('build.gradle.kts'),
-    hasViteConfig: ['vite.config.js', 'vite.config.mjs', 'vite.config.ts', 'vite.config.cjs'].some((name) => names.has(name)),
+    hasViteConfig: ['vite.config.js', 'vite.config.mjs', 'vite.config.ts', 'vite.config.cjs'].some(
+      (name) => names.has(name),
+    ),
     hasAssets: names.has('assets'),
     hasPublic: names.has('public'),
     hasVenv: names.has('venv') || names.has('.venv'),
@@ -563,7 +1020,19 @@ function buildClassification({ name, markers, packageInfo, stats }) {
   const verilogCount = countExt(stats, ['.v', '.sv', '.vh', '.vhd', '.vhdl']);
   const javaCount = countExt(stats, ['.java', '.kt', '.kts']);
   const csharpCount = countExt(stats, ['.cs', '.csproj', '.sln']);
-  const webCount = countExt(stats, ['.html', '.css', '.scss', '.sass', '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.astro']);
+  const webCount = countExt(stats, [
+    '.html',
+    '.css',
+    '.scss',
+    '.sass',
+    '.js',
+    '.jsx',
+    '.ts',
+    '.tsx',
+    '.vue',
+    '.svelte',
+    '.astro',
+  ]);
   const homework = hasKeyword(haystack, HOMEWORK_KEYWORDS);
   const game = hasKeyword(haystack, GAME_KEYWORDS);
   const tool = hasKeyword(haystack, TOOL_KEYWORDS) || stats.toolFiles > 0;
@@ -589,7 +1058,10 @@ function buildClassification({ name, markers, packageInfo, stats }) {
   if (packageInfo && packageInfo.hasElectron) {
     setCategory('Electron', 120);
     tags.add('Node.js');
-  } else if ((packageInfo && (packageInfo.hasReact || packageInfo.hasVite)) || markers.hasViteConfig) {
+  } else if (
+    (packageInfo && (packageInfo.hasReact || packageInfo.hasVite)) ||
+    markers.hasViteConfig
+  ) {
     setCategory('React / Vite', 116);
     tags.add('Web');
     tags.add('Node.js');
@@ -609,9 +1081,15 @@ function buildClassification({ name, markers, packageInfo, stats }) {
     setCategory('Web', 92);
   } else if (homework) {
     setCategory('Homework / School', 70);
-  } else if (stats.reportFiles > 0 && stats.reportFiles >= Math.max(stats.mediaFiles, stats.toolFiles, stats.codeFiles)) {
+  } else if (
+    stats.reportFiles > 0 &&
+    stats.reportFiles >= Math.max(stats.mediaFiles, stats.toolFiles, stats.codeFiles)
+  ) {
     setCategory('PDF / Report', 62);
-  } else if (stats.mediaFiles > 0 && stats.mediaFiles >= Math.max(stats.reportFiles, stats.toolFiles, stats.codeFiles)) {
+  } else if (
+    stats.mediaFiles > 0 &&
+    stats.mediaFiles >= Math.max(stats.reportFiles, stats.toolFiles, stats.codeFiles)
+  ) {
     setCategory('Image / Media', 58);
   } else if (game) {
     setCategory('Game', 54);
@@ -819,7 +1297,9 @@ function openInVSCode(target, isFile) {
       const cwd = isFile ? path.dirname(target) : target;
       const args = isFile ? [target] : ['.'];
       const child = spawnDetached('code', args, cwd);
-      child.on('error', (e) => resolve({ ok: false, error: `Could not start VS Code: ${e.message}` }));
+      child.on('error', (e) =>
+        resolve({ ok: false, error: `Could not start VS Code: ${e.message}` }),
+      );
       setTimeout(() => resolve({ ok: true, message: 'Opened in VS Code' }), 400);
     } catch (e) {
       resolve({ ok: false, error: e.message });
@@ -844,7 +1324,9 @@ function openTerminal(target, isFile) {
       } else {
         child = spawn('x-terminal-emulator', [], { cwd, detached: true, stdio: 'ignore' });
       }
-      child.on('error', (e) => resolve({ ok: false, error: `Could not open terminal: ${e.message}` }));
+      child.on('error', (e) =>
+        resolve({ ok: false, error: `Could not open terminal: ${e.message}` }),
+      );
       try {
         child.unref();
       } catch (_) {
@@ -863,7 +1345,8 @@ function runNpmScript(target, scriptName) {
   if (!fs.existsSync(packagePath)) return { ok: false, error: 'This folder has no package.json.' };
   try {
     const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf-8'));
-    if (!pkg.scripts || !pkg.scripts[scriptName]) return { ok: false, error: `package.json has no ${scriptName} script.` };
+    if (!pkg.scripts || !pkg.scripts[scriptName])
+      return { ok: false, error: `package.json has no ${scriptName} script.` };
   } catch (_) {
     return { ok: false, error: 'Could not read package.json scripts.' };
   }
@@ -891,7 +1374,10 @@ async function runAction(_config, payload) {
     case 'openTerminal':
       return openTerminal(target.path, target.isFile);
     case 'gitStatus':
-      return { ok: true, status: await gitService.checkProject({ name: target.name, path: target.path }) };
+      return {
+        ok: true,
+        status: await gitService.checkProject({ name: target.name, path: target.path }),
+      };
     case 'runDev':
       return runNpmScript(target.path, 'dev');
     case 'runBuild':

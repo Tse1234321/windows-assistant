@@ -11,22 +11,7 @@ try {
   // Keep settings usable in Node-based smoke tests.
 }
 
-const DEFAULT_PROJECT_EXCLUDES = [
-  'C:\\Windows',
-  'C:\\Program Files',
-  'C:\\Program Files (x86)',
-  'C:\\ProgramData',
-  'AppData',
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  'out',
-  '.cache',
-  '.vscode',
-  'venv',
-  '.venv',
-];
+const { PROJECT_EXCLUDES: DEFAULT_PROJECT_EXCLUDES } = require('./shared/constants');
 
 function safeAppPath(name, fallbackName) {
   try {
@@ -200,10 +185,12 @@ function ensureConfigExists() {
 }
 
 function normalizeProjectHub(parsed, defaults) {
-  const incoming = parsed.projectHub && typeof parsed.projectHub === 'object' ? parsed.projectHub : null;
-  const legacyRoots = parsed.general && Array.isArray(parsed.general.projectScanRoots)
-    ? parsed.general.projectScanRoots
-    : [];
+  const incoming =
+    parsed.projectHub && typeof parsed.projectHub === 'object' ? parsed.projectHub : null;
+  const legacyRoots =
+    parsed.general && Array.isArray(parsed.general.projectScanRoots)
+      ? parsed.general.projectScanRoots
+      : [];
 
   if (!incoming) {
     return {
@@ -245,13 +232,22 @@ function normalizeOverlay(parsed, defaults) {
     showCpu: incoming.showCpu !== false,
     showGpu: incoming.showGpu !== false,
     showRam: incoming.showRam !== false,
-    updateIntervalMs: Number.isFinite(interval) ? Math.max(500, Math.min(5000, Math.round(interval))) : defaults.overlay.updateIntervalMs,
-    fontSize: Number.isFinite(fontSize) ? Math.max(10, Math.min(28, Math.round(fontSize))) : defaults.overlay.fontSize,
-    opacity: Number.isFinite(opacity) ? Math.max(0.35, Math.min(1, opacity)) : defaults.overlay.opacity,
+    updateIntervalMs: Number.isFinite(interval)
+      ? Math.max(500, Math.min(5000, Math.round(interval)))
+      : defaults.overlay.updateIntervalMs,
+    fontSize: Number.isFinite(fontSize)
+      ? Math.max(10, Math.min(28, Math.round(fontSize)))
+      : defaults.overlay.fontSize,
+    opacity: Number.isFinite(opacity)
+      ? Math.max(0.35, Math.min(1, opacity))
+      : defaults.overlay.opacity,
     position: positions.has(incoming.position) ? incoming.position : defaults.overlay.position,
     clickThrough: incoming.clickThrough !== false,
     autoStart: incoming.autoStart === true,
-    displayId: typeof incoming.displayId === 'string' && incoming.displayId.trim() ? incoming.displayId : defaults.overlay.displayId,
+    displayId:
+      typeof incoming.displayId === 'string' && incoming.displayId.trim()
+        ? incoming.displayId
+        : defaults.overlay.displayId,
   };
 }
 
@@ -291,7 +287,7 @@ function mergeSettings(parsed) {
       ...(parsed.screenshots || {}),
       organizer: {
         ...defaults.screenshots.organizer,
-        ...(((parsed.screenshots || {}).organizer) || {}),
+        ...((parsed.screenshots || {}).organizer || {}),
       },
     },
   };
