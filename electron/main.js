@@ -30,6 +30,7 @@ const autoLaunchService = require('./services/autoLaunchService');
 const notificationService = require('./services/notificationService');
 const fileWatcherService = require('./services/fileWatcherService');
 const automationService = require('./services/automationService');
+const workflowService = require('./services/workflowService');
 const updateService = require('./services/updateService');
 const cleanupService = require('./services/cleanupService');
 const activityHistoryService = require('./services/activityHistoryService');
@@ -125,6 +126,15 @@ function monitorFolders(config) {
       if (folder) folders.push(folder);
     });
   }
+  // Watch folders referenced by enabled workflow triggers, too.
+  workflowService.listWorkflows(config).forEach((wf) => {
+    if (!wf || wf.enabled === false) return;
+    (wf.nodes || []).forEach((node) => {
+      if (node && node.kind === 'trigger' && node.config && node.config.folder) {
+        folders.push(node.config.folder);
+      }
+    });
+  });
   return folders;
 }
 
@@ -139,6 +149,16 @@ async function onNewFile(info) {
       const fired = await automationService.handleNewFile(config, info);
       if (fired.length)
         writeLog('info', `automation fired for ${info.file}: ${JSON.stringify(fired)}`);
+      // Run enabled visual workflows whose triggers match this file event.
+      const event = { kind: 'file', info };
+      for (const wf of workflowService.listWorkflows(config)) {
+        if (!wf || wf.enabled === false) continue;
+        // eslint-disable-next-line no-await-in-loop
+        const result = await workflowService.runWorkflow(wf, event, config);
+        if (result.ok && (result.steps || []).length) {
+          writeLog('info', `workflow "${wf.name}" fired for ${info.file}`);
+        }
+      }
     }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:file-event', { file: info.file, folder: info.folder });
@@ -159,6 +179,24 @@ function startMonitoring() {
   fileWatcherService.start(monitorFolders(config), onNewFile);
 }
 
+let workflowScheduleTimer = null;
+async function runScheduledWorkflows() {
+  const config = loadConfig();
+  if (config.general && config.general.automationsEnabled === false) return;
+  const event = { kind: 'schedule', info: { file: '', path: '', folder: '', ext: '', size: 0 } };
+  for (const wf of workflowService.listWorkflows(config)) {
+    if (!wf || wf.enabled === false) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const result = await workflowService.runWorkflow(wf, event, config);
+    if (result.ok && (result.steps || []).length) {
+      writeLog('info', `scheduled workflow "${wf.name}" fired`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:automation-fired', result.steps);
+      }
+    }
+  }
+}
+
 function startBackgroundServices() {
   const getConfig = () => loadConfig();
   healthGuardService.start(getConfig, { runNow: true });
@@ -168,6 +206,9 @@ function startBackgroundServices() {
       mainWindow.webContents.send('app:automation-fired', fired);
     }
   });
+  // Separate minute-cadence tick for schedule-triggered visual workflows.
+  if (workflowScheduleTimer) clearInterval(workflowScheduleTimer);
+  workflowScheduleTimer = setInterval(() => runScheduledWorkflows().catch(() => {}), 60 * 1000);
 }
 
 function recordHistory(batch) {
@@ -1327,6 +1368,57 @@ function registerIpc() {
       }
     }
     return result;
+  });
+
+  // --- Visual workflows (node-based automation graphs) ---
+  ipcMain.handle('workflow:list', async () => {
+    const config = loadConfig();
+    return { ok: true, workflows: workflowService.listWorkflows(config) };
+  });
+
+  ipcMain.handle('workflow:save', async (_event, workflows) => {
+    if (!Array.isArray(workflows)) return { ok: false, error: '無效的工作流資料' };
+    const res = settingsService.getSettings();
+    const saved = settingsService.saveSettings({ ...res.settings, workflows });
+    if (saved.ok) {
+      startMonitoring();
+      startBackgroundServices();
+      refreshTrayMenu();
+    }
+    return saved;
+  });
+
+  ipcMain.handle('workflow:run', async (_event, id) => {
+    const config = loadConfig();
+    const workflow = workflowService.listWorkflows(config).find((wf) => wf && wf.id === id);
+    if (!workflow) return { ok: false, error: '找不到工作流' };
+    const result = await workflowService.runWorkflow(workflow, { kind: 'manual' }, config);
+    writeLog('info', `workflow manual run: ${JSON.stringify(result)}`);
+    if (result.ok && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:automation-fired', result.steps || []);
+    }
+    return result;
+  });
+
+  ipcMain.handle('workflow:dryRun', async (_event, id) => {
+    const config = loadConfig();
+    const workflow = workflowService.listWorkflows(config).find((wf) => wf && wf.id === id);
+    if (!workflow) return { ok: false, error: '找不到工作流' };
+    return workflowService.dryRunWorkflow(workflow, { kind: 'manual' }, config);
+  });
+
+  ipcMain.handle('workflow:setEnabled', async (_event, { id, enabled } = {}) => {
+    const res = settingsService.getSettings();
+    const workflows = workflowService
+      .listWorkflows(res.settings)
+      .map((wf) => (wf && wf.id === id ? { ...wf, enabled: !!enabled } : wf));
+    const saved = settingsService.saveSettings({ ...res.settings, workflows });
+    if (saved.ok) {
+      startMonitoring();
+      startBackgroundServices();
+      refreshTrayMenu();
+    }
+    return saved;
   });
 
   // --- Notifications ---

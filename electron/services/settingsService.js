@@ -121,6 +121,7 @@ function createDefaultSettings() {
     projects: [],
     rules: [],
     automations: [],
+    workflows: [],
     history: [],
     cheatsheet: [],
     screenshots: {
@@ -281,6 +282,7 @@ function mergeSettings(parsed) {
     projects: Array.isArray(parsed.projects) ? parsed.projects : [],
     rules: Array.isArray(parsed.rules) ? parsed.rules : [],
     automations: Array.isArray(parsed.automations) ? parsed.automations : [],
+    workflows: Array.isArray(parsed.workflows) ? parsed.workflows : [],
     history: Array.isArray(parsed.history) ? parsed.history : [],
     screenshots: {
       ...defaults.screenshots,

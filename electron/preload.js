@@ -72,6 +72,15 @@ contextBridge.exposeInMainWorld('api', {
   saveAutomations: (automations) => ipcRenderer.invoke('automations:save', automations),
   runAutomation: (ruleId) => ipcRenderer.invoke('automations:run', ruleId),
 
+  // Visual workflow engine (node-based automation graphs)
+  workflows: {
+    list: () => ipcRenderer.invoke('workflow:list'),
+    save: (workflows) => ipcRenderer.invoke('workflow:save', workflows),
+    run: (id) => ipcRenderer.invoke('workflow:run', id),
+    dryRun: (id) => ipcRenderer.invoke('workflow:dryRun', id),
+    setEnabled: (id, enabled) => ipcRenderer.invoke('workflow:setEnabled', { id, enabled }),
+  },
+
   // Notifications
   testNotification: () => ipcRenderer.invoke('notifications:test'),
   listNotifications: () => ipcRenderer.invoke('notifications:list'),

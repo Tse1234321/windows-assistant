@@ -43,9 +43,15 @@ describe('mergeSettings', () => {
   });
 
   it('coerces non-array list fields back to arrays', () => {
-    const merged = mergeSettings({ modes: 'not-an-array', automations: null });
+    const merged = mergeSettings({ modes: 'not-an-array', automations: null, workflows: 5 });
     expect(merged.modes).toEqual([]);
     expect(merged.automations).toEqual([]);
+    expect(merged.workflows).toEqual([]);
+  });
+
+  it('preserves a valid workflows array', () => {
+    const wf = { id: 'w1', name: 'Tidy', enabled: true, nodes: [], edges: [] };
+    expect(mergeSettings({ workflows: [wf] }).workflows).toEqual([wf]);
   });
 
   it('preserves valid array fields', () => {
