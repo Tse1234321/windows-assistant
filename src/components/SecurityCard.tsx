@@ -1,12 +1,14 @@
 import React from 'react';
 
-const statusText = {
+type SecurityStatusLevel = 'normal' | 'warning' | 'unavailable';
+
+const statusText: Record<SecurityStatusLevel, string> = {
   normal: '不需採取動作',
   warning: '建議檢查',
   unavailable: '尚未接入本機資料源',
 };
 
-function StatusIcon({ status }) {
+function StatusIcon({ status }: { status: SecurityStatusLevel }) {
   if (status === 'normal') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -30,6 +32,15 @@ function StatusIcon({ status }) {
   );
 }
 
+interface SecurityCardProps {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  icon?: React.ReactNode;
+  status?: SecurityStatusLevel;
+  children?: React.ReactNode;
+  actions?: React.ReactNode;
+}
+
 export default function SecurityCard({
   title,
   description,
@@ -37,7 +48,7 @@ export default function SecurityCard({
   status = 'unavailable',
   children,
   actions,
-}) {
+}: SecurityCardProps) {
   return (
     <section className={`security-card ${status}`}>
       <div className="security-card-head">
