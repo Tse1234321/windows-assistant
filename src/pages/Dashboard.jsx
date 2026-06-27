@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import DashboardGlobe from '../components/dashboard/DashboardGlobe.jsx';
 import FileAnalytics from '../components/dashboard/FileAnalytics.jsx';
 import RecentActivities from '../components/dashboard/RecentActivities.jsx';
 import StatCard from '../components/dashboard/StatCard.jsx';
 import SystemOverview from '../components/dashboard/SystemOverview.jsx';
+import { usePollingEffect } from '../hooks/usePollingEffect.js';
 import InlineAlert from '../components/InlineAlert.jsx';
 import { useLocale } from '../i18n.jsx';
 import { getDashboardStats } from '../services/dashboardService.js';
@@ -52,11 +53,7 @@ export default function Dashboard({ onNavigate }) {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 30000);
-    return () => clearInterval(id);
-  }, [refresh]);
+  usePollingEffect(refresh, 30000, [refresh]);
 
   const stats = data?.stats || {};
   const nodes = data?.nodes || [];

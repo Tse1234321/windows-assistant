@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { usePollingEffect } from '../hooks/usePollingEffect.js';
 import Button from '../components/Button.jsx';
 import DataTable from '../components/DataTable.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -171,11 +172,7 @@ export default function SystemMonitor({ onNavigate }) {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 4000);
-    return () => clearInterval(id);
-  }, [refresh]);
+  usePollingEffect(refresh, 4000, [refresh]);
 
   const metrics = status?.metrics;
   const health = status?.health;

@@ -6,6 +6,7 @@ import PageHeader from '../components/PageHeader.jsx';
 import SectionPanel from '../components/SectionPanel.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { normalizePath, matchesStatus, sortProjects } from '../utils/projectSort.js';
 
 const ACTIONS = [
   { key: 'openFolder', label: '開資料夾' },
@@ -31,12 +32,6 @@ const SORTS = [
   { key: 'category', label: '類型' },
 ];
 
-function normalizePath(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase();
-}
-
 function projectTone(project) {
   if (!project.exists) return 'danger';
   if (project.modifiedCount > 0) return 'warn';
@@ -49,39 +44,6 @@ function projectLabel(project) {
   if (project.modifiedCount > 0) return `${project.modifiedCount} 個變更`;
   if (project.isGitRepo) return 'Git Repo';
   return '資料夾';
-}
-
-function matchesStatus(project, filter, workspacePaths) {
-  if (filter === 'pinned') return workspacePaths.has(normalizePath(project.path));
-  if (filter === 'git') return project.isGitRepo;
-  if (filter === 'dirty') return project.modifiedCount > 0;
-  if (filter === 'folder') return project.exists && !project.isGitRepo;
-  if (filter === 'missing') return !project.exists;
-  return true;
-}
-
-function sortProjects(items, sortKey, workspacePaths) {
-  const sorted = [...items];
-  sorted.sort((a, b) => {
-    const aPinned = workspacePaths.has(normalizePath(a.path));
-    const bPinned = workspacePaths.has(normalizePath(b.path));
-    if (aPinned !== bPinned) return aPinned ? -1 : 1;
-
-    if (sortKey === 'name') return String(a.name).localeCompare(String(b.name), 'zh-Hant');
-    if (sortKey === 'category') {
-      const byCategory = String(a.category || '').localeCompare(
-        String(b.category || ''),
-        'zh-Hant',
-      );
-      return byCategory || String(a.name).localeCompare(String(b.name), 'zh-Hant');
-    }
-    if (sortKey === 'modified')
-      return Date.parse(b.lastModified || 0) - Date.parse(a.lastModified || 0);
-    return (
-      (b.weight || 0) - (a.weight || 0) || String(a.name).localeCompare(String(b.name), 'zh-Hant')
-    );
-  });
-  return sorted;
 }
 
 function formatDate(value) {
