@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Button from './Button.jsx';
 import StatusBadge from './StatusBadge.jsx';
 
@@ -125,14 +125,14 @@ export default function ModeEditor({ onSaved }) {
 
   const mode = modes[selected];
 
-  const validate = async (pathValue) => {
+  const validate = useCallback(async (pathValue) => {
     const trimmed = (pathValue || '').trim();
     if (!window.api || !trimmed) return;
     const info = await window.api.pathInfo(trimmed);
     setPathChecks((previous) => ({ ...previous, [trimmed]: info }));
-  };
+  }, []);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!window.api) {
       setNotice({ type: 'error', message: 'Electron API 尚未載入，請使用安裝版 App。' });
       setLoading(false);
@@ -155,11 +155,11 @@ export default function ModeEditor({ onSaved }) {
       item.commands.forEach((command) => command.cwd && paths.add(command.cwd));
     });
     paths.forEach((pathValue) => validate(pathValue));
-  };
+  }, [validate]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const summary = useMemo(
     () => ({

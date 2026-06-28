@@ -19,7 +19,6 @@ const {
 const settingsService = require('./services/settingsService');
 const systemMonitorService = require('./services/systemMonitorService');
 const fileOrganizerService = require('./services/fileOrganizerService');
-const downloadService = require('./services/downloadService');
 const gitService = require('./services/gitService');
 const modeService = require('./services/modeService');
 const projectService = require('./services/projectService');
@@ -52,9 +51,6 @@ if (isDev) {
     /* keep Electron's default dev profile if the path cannot be overridden */
   }
 }
-
-// In-memory record of the last organize batch (for undo).
-let lastOrganizeBatch = null;
 
 // --- Structured logger (JSON lines at <userData>/logs/app.log) ---
 // writeLog keeps its old (level, message) signature so existing call sites are
@@ -557,18 +553,6 @@ function showWindowAfterWake(reason) {
   showWindow('dashboard', { aggressive: true });
 }
 
-async function runProgrammingModeFromTray() {
-  try {
-    const config = loadConfig();
-    const result = await modeService.runMode(config, config.modes[0] ? config.modes[0].name : null);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('app:mode-result', result);
-    }
-  } catch (err) {
-    console.error('[main] tray run mode failed:', err);
-  }
-}
-
 function buildTrayMenu() {
   const paused = fileWatcherService.isPaused();
   const updates = updateService.getStatus().status;
@@ -823,7 +807,6 @@ function registerIpc() {
         error: 'Invalid organize items.',
       };
     const result = await fileOrganizerService.organize(items, payload.settings || {});
-    lastOrganizeBatch = result.results || [];
     recordHistory(result);
     return result;
   });

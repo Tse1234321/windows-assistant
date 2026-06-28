@@ -719,7 +719,7 @@ function selectedModuleIds(template, payload = {}) {
   return Array.from(new Set((template.moduleIds || []).filter((id) => LANGUAGE_MODULES[id])));
 }
 
-function filesForTemplate(template, moduleIds, workspaceName) {
+function filesForTemplate(template, moduleIds) {
   const files = { ...(template.files || {}) };
   for (const id of moduleIds) {
     Object.assign(files, LANGUAGE_MODULES[id].files || {});
@@ -747,7 +747,7 @@ async function createFromTemplate(config, payload = {}) {
   if (!isDirectory(baseDir)) return { ok: false, error: `Base folder not found: ${baseDir}` };
   if (fs.existsSync(target)) return { ok: false, error: `Folder already exists: ${target}` };
 
-  const files = filesForTemplate(template, moduleIds, name);
+  const files = filesForTemplate(template, moduleIds);
   await fs.promises.mkdir(target, { recursive: true });
   const writtenFiles = await Promise.all(
     Object.entries(files).map(async ([relativePath, writer]) => {

@@ -117,7 +117,7 @@ export default function Projects({ onNavigate }) {
     return () => clearInterval(id);
   }, [load]);
 
-  const workspaceProjects = hub?.pinnedProjects || [];
+  const workspaceProjects = useMemo(() => hub?.pinnedProjects || [], [hub?.pinnedProjects]);
   const workspacePaths = useMemo(
     () => new Set(workspaceProjects.map((item) => normalizePath(item.path))),
     [workspaceProjects],

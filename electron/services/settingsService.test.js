@@ -9,8 +9,8 @@ describe('createDefaultSettings', () => {
     const a = createDefaultSettings();
     const b = createDefaultSettings();
     expect(a).not.toBe(b);
-    a.general.theme = 'dark';
-    expect(b.general.theme).toBe('system');
+    a.general.theme = 'light';
+    expect(b.general.theme).toBe('dark');
   });
 
   it('exposes the expected top-level sections', () => {
@@ -75,7 +75,7 @@ describe('mergeSettings', () => {
 
   it('tolerates an empty object', () => {
     const merged = mergeSettings({});
-    expect(merged.general.theme).toBe('system');
+    expect(merged.general.theme).toBe('dark');
     expect(merged.automations).toEqual([]);
   });
 });

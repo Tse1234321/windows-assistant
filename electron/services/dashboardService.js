@@ -98,12 +98,6 @@ function safeAppPath(name, fallbackName) {
   return path.join(os.homedir(), fallbackName);
 }
 
-function iso(value) {
-  if (!value) return '';
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : '';
-}
-
 function statusForPercent(percent) {
   if (percent == null || !Number.isFinite(Number(percent))) return 'normal';
   if (percent >= 90) return 'danger';

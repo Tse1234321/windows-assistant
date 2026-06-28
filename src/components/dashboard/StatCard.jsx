@@ -1,14 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { formatBytes } from '../../utils/format.js';
 
-function useCountUp(value) {
+export function useCountUp(value) {
   const target = Number(value || 0);
   const [display, setDisplay] = useState(target);
+  const displayRef = useRef(target);
 
   useEffect(() => {
-    const start = display;
+    const start = displayRef.current;
     const delta = target - start;
     if (!Number.isFinite(target) || Math.abs(delta) < 1) {
+      displayRef.current = target;
       setDisplay(target);
       return undefined;
     }
@@ -18,7 +20,9 @@ function useCountUp(value) {
     const tick = () => {
       frame += 1;
       const progress = 1 - Math.pow(1 - frame / total, 3);
-      setDisplay(Math.round(start + delta * progress));
+      const next = Math.round(start + delta * progress);
+      displayRef.current = next;
+      setDisplay(next);
       if (frame < total) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -55,7 +59,7 @@ export default function StatCard({
   return (
     <button
       type="button"
-      className={`dash-stat-card glass-card tone-${tone}`}
+      className={`dash-stat-card glass-card tone-${tone} ${loading ? 'is-loading' : ''}`}
       onClick={onClick}
       disabled={!onClick}
     >

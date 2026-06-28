@@ -8,111 +8,18 @@ const STATUS_ORDER = { danger: 4, warning: 3, normal: 2, good: 1 };
 
 const STATUS_COLORS = {
   good: 0x22d3ee,
-  normal: 0x3b82f6,
-  warning: 0xfb7185,
-  danger: 0xff5f5f,
+  normal: 0xa855f7,
+  warning: 0xd946ef,
+  danger: 0xff4f83,
 };
 
 const TYPE_COLORS = {
   file: 0x38bdf8,
   project: 0xa78bfa,
-  system: 0x60a5fa,
-  cleanup: 0xfb7185,
+  system: 0x22d3ee,
+  cleanup: 0xd946ef,
   automation: 0x22d3ee,
 };
-
-const FALLBACK_NODES = [
-  {
-    id: 'fallback-system',
-    label: 'System',
-    type: 'system',
-    value: 72,
-    status: 'normal',
-    route: 'monitor',
-    meta: { unavailable: true },
-  },
-  {
-    id: 'fallback-storage',
-    label: 'Storage',
-    type: 'system',
-    value: 64,
-    status: 'normal',
-    route: 'monitor',
-    meta: { unavailable: true },
-  },
-  {
-    id: 'fallback-downloads',
-    label: 'Downloads',
-    type: 'file',
-    value: 38,
-    status: 'good',
-    route: 'files',
-    meta: { unavailable: true },
-  },
-  {
-    id: 'fallback-desktop',
-    label: 'Desktop',
-    type: 'file',
-    value: 44,
-    status: 'good',
-    route: 'files',
-    meta: { unavailable: true },
-  },
-  {
-    id: 'fallback-documents',
-    label: 'Documents',
-    type: 'file',
-    value: 32,
-    status: 'good',
-    route: 'files',
-    meta: { unavailable: true },
-  },
-  {
-    id: 'fallback-cache',
-    label: 'Cache',
-    type: 'cleanup',
-    value: 58,
-    status: 'warning',
-    route: 'cleanup',
-    meta: { unavailable: true },
-  },
-  {
-    id: 'fallback-temp',
-    label: 'Temp Files',
-    type: 'cleanup',
-    value: 42,
-    status: 'warning',
-    route: 'cleanup',
-    meta: { unavailable: true },
-  },
-  {
-    id: 'fallback-projects',
-    label: 'Project Hub',
-    type: 'project',
-    value: 70,
-    status: 'normal',
-    route: 'projects',
-    meta: { unavailable: true },
-  },
-  {
-    id: 'fallback-network',
-    label: 'Network',
-    type: 'system',
-    value: 50,
-    status: 'normal',
-    route: 'monitor',
-    meta: { unavailable: true },
-  },
-  {
-    id: 'fallback-security',
-    label: 'Security',
-    type: 'system',
-    value: 80,
-    status: 'good',
-    route: 'health',
-    meta: { unavailable: true },
-  },
-];
 
 function hash(input) {
   return String(input || '')
@@ -144,7 +51,8 @@ function makeGlowTexture() {
   const gradient = ctx.createRadialGradient(48, 48, 0, 48, 48, 48);
   gradient.addColorStop(0, 'rgba(255,255,255,0.95)');
   gradient.addColorStop(0.18, 'rgba(56,189,248,0.72)');
-  gradient.addColorStop(0.58, 'rgba(56,189,248,0.22)');
+  gradient.addColorStop(0.52, 'rgba(168,85,247,0.28)');
+  gradient.addColorStop(0.72, 'rgba(217,70,239,0.18)');
   gradient.addColorStop(1, 'rgba(56,189,248,0)');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 96, 96);
@@ -155,8 +63,8 @@ function makeCityPoints(count = 1100, radius = 2.365) {
   const positions = [];
   const colors = [];
   const cyan = new THREE.Color(0x67e8f9);
-  const blue = new THREE.Color(0x93c5fd);
-  const violet = new THREE.Color(0xc4b5fd);
+  const violet = new THREE.Color(0xa78bfa);
+  const magenta = new THREE.Color(0xd946ef);
 
   for (let index = 0; index < count; index += 1) {
     const vec = sphericalPosition(index, count, index * 31, radius);
@@ -164,7 +72,7 @@ function makeCityPoints(count = 1100, radius = 2.365) {
     const band = Math.abs(Math.sin(vec.x * 1.8 + vec.y * 3.2 + vec.z * 0.7));
     if (band < 0.25 && index % 3 !== 0) continue;
     positions.push(vec.x, vec.y, vec.z);
-    const color = index % 13 === 0 ? violet : index % 5 === 0 ? blue : cyan;
+    const color = index % 13 === 0 ? magenta : index % 5 === 0 ? violet : cyan;
     const strength = 0.45 + (Math.abs(noise) % 0.55);
     colors.push(color.r * strength, color.g * strength, color.b * strength);
   }
@@ -251,8 +159,7 @@ export default function DashboardGlobe({
   }));
 
   const displayNodes = useMemo(() => {
-    const source = nodes.length ? nodes : FALLBACK_NODES;
-    return [...source]
+    return [...nodes]
       .sort(
         (a, b) =>
           (STATUS_ORDER[b.status] || 0) - (STATUS_ORDER[a.status] || 0) ||
@@ -304,19 +211,22 @@ export default function DashboardGlobe({
     root.rotation.set(-0.12, -0.4, 0.02);
     scene.add(root);
 
-    scene.add(new THREE.AmbientLight(0x8bdfff, 0.9));
+    scene.add(new THREE.AmbientLight(0x8bdfff, 0.76));
     const keyLight = new THREE.DirectionalLight(0x67e8f9, 2.2);
     keyLight.position.set(-3, 3, 5);
     scene.add(keyLight);
-    const rimLight = new THREE.PointLight(0x38bdf8, 7.5, 8);
+    const rimLight = new THREE.PointLight(0x38bdf8, 8.5, 8);
     rimLight.position.set(0, -0.4, 3.3);
     scene.add(rimLight);
+    const purpleRimLight = new THREE.PointLight(0xd946ef, 6.8, 8);
+    purpleRimLight.position.set(2.8, 1.2, 2.8);
+    scene.add(purpleRimLight);
 
     const globeGeometry = new THREE.SphereGeometry(2.22, 96, 96);
     const globeMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0x061a3f,
-      emissive: 0x05295f,
-      emissiveIntensity: 0.62,
+      color: 0x080f35,
+      emissive: 0x24115f,
+      emissiveIntensity: 0.78,
       roughness: 0.36,
       metalness: 0.05,
       transmission: 0.18,
@@ -329,7 +239,7 @@ export default function DashboardGlobe({
 
     const wire = new THREE.LineSegments(
       new THREE.WireframeGeometry(new THREE.SphereGeometry(2.235, 36, 20)),
-      new THREE.LineBasicMaterial({ color: 0x21d4ff, transparent: true, opacity: 0.18 }),
+      new THREE.LineBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.18 }),
     );
     root.add(wire);
 
@@ -344,6 +254,19 @@ export default function DashboardGlobe({
       }),
     );
     root.add(rim);
+
+    const purpleRim = new THREE.Mesh(
+      new THREE.SphereGeometry(2.33, 96, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0xa855f7,
+        side: THREE.BackSide,
+        transparent: true,
+        opacity: 0.15,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    root.add(purpleRim);
 
     const cityPoints = new THREE.Points(
       makeCityPoints(),
@@ -748,6 +671,13 @@ export default function DashboardGlobe({
         <div className="globe-loading">
           <span className="dash-skeleton dash-skeleton-orb" />
           <span>{t('dashboard.loadingNodes')}</span>
+        </div>
+      ) : null}
+
+      {!loading && displayNodes.length === 0 ? (
+        <div className="globe-empty-state">
+          <strong>{t('dashboard.noLiveNodes')}</strong>
+          <span>{t('dashboard.noClassifiedHint')}</span>
         </div>
       ) : null}
 

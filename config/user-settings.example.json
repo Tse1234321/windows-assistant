@@ -12,7 +12,7 @@
     "showOnResume": true,
     "notifications": true,
     "autoUpdate": true,
-    "theme": "system",
+    "theme": "dark",
     "accentColor": "#4f8cff",
     "compactMode": false,
     "watchEnabled": true,

@@ -84,7 +84,7 @@ function createDefaultSettings() {
       showOnResume: true,
       notifications: true,
       autoUpdate: true,
-      theme: 'system',
+      theme: 'dark',
       language: 'zh',
       accentColor: '#4f8cff',
       compactMode: false,

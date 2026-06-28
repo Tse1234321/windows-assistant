@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLocale } from '../../i18n.jsx';
+import BarMini from '../viz/BarMini.jsx';
 
 function timeAgo(value) {
   if (!value) return '--';
@@ -23,14 +24,51 @@ function formatTemp(value) {
   return value == null ? '--' : `${value}°C`;
 }
 
+function normalizeCoreTemp(core, index) {
+  if (typeof core === 'number') {
+    return {
+      id: `core-${index + 1}`,
+      name: `C${index + 1}`,
+      temperatureC: core,
+    };
+  }
+
+  return {
+    ...core,
+    id: core?.id || core?.name || `core-${index + 1}`,
+    name: core?.name || `C${index + 1}`,
+    temperatureC: Number(core?.temperatureC),
+  };
+}
+
 function normalizePinned(projects = {}) {
   return (projects.pinnedProjects || []).slice(0, 5);
 }
 
-export default function FileAnalytics({ projects, system, notifications, onNavigate }) {
+function extensionBars(files) {
+  return Object.entries(files?.extensionGroups || {})
+    .map(([label, stats]) => ({
+      label,
+      value: Number(stats?.count || 0),
+      sizeBytes: Number(stats?.sizeBytes || 0),
+    }))
+    .filter((item) => item.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
+}
+
+export default function FileAnalytics({ files, projects, system, notifications, onNavigate }) {
   const { t } = useLocale();
   const pinnedProjects = normalizePinned(projects);
-  const cpuCores = (system?.metrics?.temperatures?.cpuCores || []).slice(0, 10);
+  const cpuCores = (system?.metrics?.temperatures?.cpuCores || [])
+    .slice(0, 10)
+    .map(normalizeCoreTemp)
+    .filter((core) => Number.isFinite(core.temperatureC));
+  const cpuBars = cpuCores.map((core, index) => ({
+    label: core.name || `C${index + 1}`,
+    value: core.temperatureC,
+  }));
+  const typeBars = extensionBars(files);
   const recentProjects = (projects?.recentProjects || []).slice(0, 5);
   const notices = (notifications?.events || []).slice(0, 5);
 
@@ -72,29 +110,42 @@ export default function FileAnalytics({ projects, system, notifications, onNavig
           </button>
         </div>
         {cpuCores.length ? (
-          <div className="cpu-core-grid">
-            {cpuCores.map((core, index) => (
-              <div
-                className={`cpu-core-tile tone-${tempLevel(core.temperatureC)} ${core.stabilized ? 'is-stabilized' : ''}`}
-                key={core.id || core.name || index}
-                title={
-                  core.rawTemperatureC == null
-                    ? undefined
-                    : `Raw ${formatTemp(core.rawTemperatureC)} / samples ${core.sampleCount || 1}`
-                }
-              >
-                <span>{core.name || `Core ${index + 1}`}</span>
-                <strong>{formatTemp(core.temperatureC)}</strong>
-                {typeof core.loadPercent === 'number' ? <em>{core.loadPercent}% load</em> : null}
-              </div>
-            ))}
-          </div>
+          <>
+            <BarMini items={cpuBars} max={100} unit="°C" emptyTitle={t('dashboard.noCpuTemps')} />
+            <div className="cpu-core-grid">
+              {cpuCores.slice(0, 4).map((core, index) => (
+                <div
+                  className={`cpu-core-tile tone-${tempLevel(core.temperatureC)} ${core.stabilized ? 'is-stabilized' : ''}`}
+                  key={core.id || core.name || index}
+                  title={
+                    core.rawTemperatureC == null
+                      ? undefined
+                      : `Raw ${formatTemp(core.rawTemperatureC)} / samples ${core.sampleCount || 1}`
+                  }
+                >
+                  <span>{core.name || `Core ${index + 1}`}</span>
+                  <strong>{formatTemp(core.temperatureC)}</strong>
+                  {typeof core.loadPercent === 'number' ? <em>{core.loadPercent}% load</em> : null}
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="dash-empty compact">
             <strong>{t('dashboard.noCpuTemps')}</strong>
             <span>{t('dashboard.noCpuTempsHint')}</span>
           </div>
         )}
+      </section>
+
+      <section className="glass-card dashboard-panel">
+        <div className="panel-heading">
+          <span>{t('dashboard.fileTypeDistribution')}</span>
+          <button type="button" onClick={() => onNavigate('files')}>
+            {t('dashboard.organize')}
+          </button>
+        </div>
+        <BarMini items={typeBars} emptyTitle={t('dashboard.noClassifiedFiles')} />
       </section>
 
       <section className="glass-card dashboard-panel">

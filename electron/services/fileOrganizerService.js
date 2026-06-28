@@ -75,14 +75,6 @@ async function pathIsDirectory(target) {
   }
 }
 
-function pathIsDirectorySync(target) {
-  try {
-    return fs.statSync(target).isDirectory();
-  } catch (_) {
-    return false;
-  }
-}
-
 async function detectDownloads() {
   const candidates = [];
   const reg = await queryRegistryDownloads();
@@ -232,7 +224,7 @@ function skipReasonForCategoryFolder(rootPath, filePath, classification, setting
 async function readDirSafe(dir) {
   try {
     return await fs.promises.readdir(dir, { withFileTypes: true });
-  } catch (err) {
+  } catch (_err) {
     return null;
   }
 }

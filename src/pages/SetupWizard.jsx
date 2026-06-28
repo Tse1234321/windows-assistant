@@ -49,9 +49,12 @@ export default function SetupWizard({ onNavigate }) {
     load();
   }, [load]);
 
-  const general = settings?.general || {};
-  const projectHub = settings?.projectHub || {};
-  const projectRoots = Array.isArray(projectHub.scanRoots) ? projectHub.scanRoots : [];
+  const general = useMemo(() => settings?.general || {}, [settings?.general]);
+  const projectHub = useMemo(() => settings?.projectHub || {}, [settings?.projectHub]);
+  const projectRoots = useMemo(
+    () => (Array.isArray(projectHub.scanRoots) ? projectHub.scanRoots : []),
+    [projectHub.scanRoots],
+  );
 
   const updateGeneral = (patch) => {
     setSettings((prev) => ({

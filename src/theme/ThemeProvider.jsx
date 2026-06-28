@@ -10,7 +10,7 @@ function systemPrefersDark() {
 }
 
 function applyToDocument(theme, accent, compact) {
-  const resolved = theme === 'system' ? 'light' : theme;
+  const resolved = theme === 'system' ? (systemPrefersDark() ? 'dark' : 'light') : theme;
   const root = document.documentElement;
   root.setAttribute('data-theme', resolved);
   root.setAttribute('data-compact', compact ? 'true' : 'false');
@@ -21,8 +21,8 @@ function applyToDocument(theme, accent, compact) {
 }
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState('light');
-  const [accent, setAccentState] = useState('#4f8cff');
+  const [theme, setThemeState] = useState('dark');
+  const [accent, setAccentState] = useState('#22d3ee');
   const [compact, setCompactState] = useState(false);
   const [loaded, setLoaded] = useState(false);
 

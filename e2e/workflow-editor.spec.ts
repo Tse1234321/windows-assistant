@@ -1,20 +1,15 @@
-import { test, expect, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 /**
- * Drives the flagship visual workflow editor end-to-end against the built
- * renderer. `window.api` (the Electron preload bridge) is mocked before the app
- * boots, so this validates the real React flow — navigation, creating a
- * workflow, applying a template, and previewing a dry-run — independently of the
- * Electron/Windows backend (the engine itself is covered by unit tests).
+ * Drives the visual workflow editor against the built renderer. `window.api`
+ * is mocked before the app boots, so this validates navigation, templates,
+ * palette creation, and dry-run UI independently of the Electron backend.
  */
 
-// Injected before any app script runs. A permissive Proxy answers unknown calls
-// with { ok: true }; the methods the app actually depends on are pinned.
 async function mockApi(page: Page) {
   await page.addInitScript(() => {
     const noopUnsub = () => () => {};
     const overrides: Record<string, unknown> = {
-      // App boot
       onNavigate: noopUnsub,
       onModeResult: noopUnsub,
       onOpenCommandPalette: noopUnsub,
@@ -24,7 +19,7 @@ async function mockApi(page: Page) {
       getSettings: async () => ({ ok: true, settings: { general: { language: 'en' } } }),
       getDashboardStats: async () => ({ ok: true, stats: {}, nodes: [] }),
       getSystemStatus: async () => ({ ok: true }),
-      // Workflow editor
+      pickPath: async () => ({ ok: true, path: 'C:\\Users\\jerem\\Downloads' }),
       workflows: {
         list: async () => ({ ok: true, workflows: [] }),
         save: async () => ({ ok: true }),
@@ -44,7 +39,6 @@ async function mockApi(page: Page) {
     const handler: ProxyHandler<Record<string, unknown>> = {
       get(target, prop: string) {
         if (prop in target) return target[prop];
-        // Unknown member: a callable that resolves ok and proxies deeper access.
         const fn = () => Promise.resolve({ ok: true });
         return new Proxy(fn, handler as ProxyHandler<typeof fn>);
       },
@@ -66,25 +60,23 @@ test('navigates to the visual automation editor', async ({ page }) => {
 test('create a workflow, apply a template, and preview a dry-run', async ({ page }) => {
   await page.getByText('Workflows', { exact: true }).click();
 
-  // New workflow (the + in the list header), then apply a starter template.
-  await page.locator('.wf-list-head button').click();
-  await expect(page.locator('.wf-list-item')).toHaveCount(1);
+  await page.getByTestId('wf-new').click();
+  await expect(page.getByTestId('wf-list-item')).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Tidy Downloads' }).click();
-  // The template lays down a trigger and an action node on the canvas.
+  await page.getByTestId('wf-template-Tidy Downloads').click();
   await expect(page.locator('.wf-node')).toHaveCount(2);
-  await expect(page.locator('.wf-node-danger')).toHaveCount(1); // organize = destructive
+  await expect(page.locator('.wf-node-danger')).toHaveCount(1);
 
-  // Dry-run previews the plan without executing.
   await page.getByRole('button', { name: 'Dry run' }).click();
-  const output = page.locator('.wf-output');
-  await expect(output).toContainText('Dry run');
+  const output = page.getByTestId('wf-run-output');
+  await expect(output).toContainText('DRY');
   await expect(output).toContainText('Organize file');
 });
 
-test('add a trigger node from the toolbar', async ({ page }) => {
+test('add a trigger node from the node palette', async ({ page }) => {
   await page.getByText('Workflows', { exact: true }).click();
-  await page.locator('.wf-list-head button').click();
-  await page.getByRole('button', { name: '+ Trigger' }).click();
+  await page.getByTestId('wf-new').click();
+  await page.getByTestId('wf-add-node').click();
+  await page.getByTestId('wf-palette-trigger-newFileInFolder').click();
   await expect(page.locator('.wf-node-trigger')).toHaveCount(1);
 });

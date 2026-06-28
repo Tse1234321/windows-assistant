@@ -236,8 +236,7 @@ async function scanScreenshots(basePath, options = {}) {
   return result;
 }
 
-async function organizeScreenshots(plan, options = {}) {
-  const settings = normalizeScreenshotOrganizerSettings(options.settings || options);
+async function organizeScreenshots(plan, _options = {}) {
   const items = Array.isArray(plan) ? plan : [];
   const reservedTargets = new Set();
   const results = [];

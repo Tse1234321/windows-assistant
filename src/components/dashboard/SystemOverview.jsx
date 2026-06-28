@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatBytes } from '../../utils/format.js';
 import { useLocale } from '../../i18n.jsx';
+import RingGauge from '../viz/RingGauge.jsx';
 
 function levelClass(value) {
   if (value == null) return 'muted';
@@ -33,6 +34,9 @@ export default function SystemOverview({ data, onNavigate }) {
   const health = data?.system?.health;
   const disk = (metrics?.disks || []).find((item) => item.ok);
   const memory = metrics?.memory;
+  const diskDetail = disk
+    ? `${disk.drive} ${formatBytes(disk.used)} / ${formatBytes(disk.total)}`
+    : t('dashboard.unavailable');
 
   return (
     <aside className="dashboard-side-stack">
@@ -47,6 +51,18 @@ export default function SystemOverview({ data, onNavigate }) {
           <span>{t('dashboard.systemHealth')}</span>
           <strong>{health?.score ?? '--'}</strong>
         </div>
+        <div className="overview-gauge-row">
+          <RingGauge
+            label={t('dashboard.storage')}
+            value={disk?.usedPercent}
+            detail={diskDetail}
+            empty={!disk || disk.usedPercent == null}
+          />
+          <div className="overview-gauge-copy">
+            <strong>{disk?.drive || t('dashboard.storage')}</strong>
+            <span>{diskDetail}</span>
+          </div>
+        </div>
         <MetricRow
           label="CPU"
           value={metrics?.cpu?.usagePercent}
@@ -59,15 +75,7 @@ export default function SystemOverview({ data, onNavigate }) {
             memory ? `${formatBytes(memory.usedBytes)} / ${formatBytes(memory.totalBytes)}` : ''
           }
         />
-        <MetricRow
-          label={t('dashboard.storage')}
-          value={disk?.usedPercent}
-          detail={
-            disk
-              ? `${disk.drive} used ${formatBytes(disk.used)} of ${formatBytes(disk.total)}`
-              : 'No disk data'
-          }
-        />
+        <MetricRow label={t('dashboard.storage')} value={disk?.usedPercent} detail={diskDetail} />
         <MetricRow label={t('dashboard.network')} unavailable />
       </section>
 

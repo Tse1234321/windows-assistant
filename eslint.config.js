@@ -65,7 +65,11 @@ module.exports = [
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': [
         'warn',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+        {
+          argsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          varsIgnorePattern: '^_|^React$',
+        },
       ],
       'no-undef': 'off',
     },
@@ -81,7 +85,14 @@ module.exports = [
     },
     rules: {
       eqeqeq: ['warn', 'smart'],
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
+      ],
       'no-empty': ['warn', { allowEmptyCatch: true }],
       'no-console': 'off',
     },
@@ -100,10 +111,18 @@ module.exports = [
     settings: { react: { version: '18' } },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      'react/jsx-uses-vars': 'warn',
       'react/jsx-uses-react': 'off',
       'react/react-in-jsx-scope': 'off',
       eqeqeq: ['warn', 'smart'],
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          varsIgnorePattern: '^_|^React$',
+        },
+      ],
       'no-empty': ['warn', { allowEmptyCatch: true }],
     },
   },

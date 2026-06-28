@@ -1015,7 +1015,7 @@ function buildRecommendations({
   downloadsSize,
   desktopCount,
   tempSize,
-  browserSize,
+  browserSize: _browserSize,
   largeCount,
   duplicateCount,
   recycleBin,

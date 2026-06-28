@@ -124,7 +124,6 @@ function openPath(targetPath) {
 
 export default function CleanCenter() {
   const { toast } = useToast();
-  const [status, setStatus] = useState(null);
   const [scanResult, setScanResult] = useState(null);
   const [logs, setLogs] = useState([]);
   const [selected, setSelected] = useState(new Set());
@@ -135,17 +134,7 @@ export default function CleanCenter() {
 
   const load = useCallback(async () => {
     if (!window.api?.cleanup) return;
-    // allSettled so one failing IPC doesn't reject the whole load; missing values become null.
-    const settled = await Promise.allSettled([
-      window.api.cleanup.getSummary
-        ? window.api.cleanup.getSummary()
-        : window.api.cleanup.getStatus(),
-      window.api.cleanup.getLogs(),
-    ]);
-    const [summaryResult, logsResult] = settled.map((entry) =>
-      entry.status === 'fulfilled' ? entry.value : null,
-    );
-    if (summaryResult?.ok) setStatus(summaryResult);
+    const logsResult = await window.api.cleanup.getLogs().catch(() => null);
     if (logsResult?.ok) setLogs(logsResult.logs || []);
   }, []);
 
@@ -170,7 +159,7 @@ export default function CleanCenter() {
     load();
   };
 
-  const items = scanResult?.items || [];
+  const items = useMemo(() => scanResult?.items || [], [scanResult?.items]);
   const selectedItems = useMemo(
     () => items.filter((item) => selected.has(item.id)),
     [items, selected],

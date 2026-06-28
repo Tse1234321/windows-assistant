@@ -1,7 +1,6 @@
 'use strict';
 
 const fs = require('fs');
-const path = require('path');
 const { execFile } = require('child_process');
 
 /**
@@ -47,7 +46,7 @@ async function checkProject(project) {
   // Path existence check (do not crash on a bad path).
   try {
     base.exists = fs.existsSync(project.path) && fs.statSync(project.path).isDirectory();
-  } catch (err) {
+  } catch (_err) {
     base.exists = false;
   }
   if (!base.exists) {

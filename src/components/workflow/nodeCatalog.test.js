@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ACTION_TYPES, TRIGGER_TYPES, catalogFor, findDef, nodeLabel } from './nodeCatalog.ts';
 // The engine is the source of truth for which actions are destructive.
 import workflow from '../../../electron/services/workflowService.js';
 
 const { DESTRUCTIVE_ACTIONS, isDestructiveAction } = workflow;
 
-describe('node catalog ↔ engine contract', () => {
+describe('node catalog engine contract', () => {
   it('every catalog action marked destructive is destructive in the engine', () => {
     for (const def of ACTION_TYPES) {
       if (def.destructive) {
@@ -14,11 +14,11 @@ describe('node catalog ↔ engine contract', () => {
     }
   });
 
-  it('every engine destructive action is represented (and flagged) in the catalog', () => {
+  it('every engine destructive action is represented and flagged in the catalog', () => {
     for (const type of DESTRUCTIVE_ACTIONS) {
       const def = findDef('action', type);
       expect(def, `catalog missing action "${type}"`).toBeTruthy();
-      expect(def.destructive).toBe(true);
+      expect(def?.destructive).toBe(true);
     }
   });
 });

@@ -55,10 +55,10 @@ export default function Dashboard({ onNavigate }) {
 
   usePollingEffect(refresh, 30000, [refresh]);
 
-  const stats = data?.stats || {};
+  const stats = useMemo(() => data?.stats || {}, [data?.stats]);
+  const metrics = useMemo(() => data?.system?.metrics || {}, [data?.system?.metrics]);
   const nodes = data?.nodes || [];
   const storageNode = pickNode(nodes, 'system-storage');
-  const cacheNode = pickNode(nodes, 'cleanup-cache');
   const tempNode = pickNode(nodes, 'cleanup-temp-files');
 
   const highlights = useMemo(
@@ -73,13 +73,6 @@ export default function Dashboard({ onNavigate }) {
         onClick: () => onNavigate('files'),
       },
       {
-        label: t('dashboard.activeProjects'),
-        icon: 'P',
-        value: stats.activeProjects,
-        sub: `${stats.gitRepos || 0} ${t('dashboard.gitReposDetected')}`,
-        onClick: () => onNavigate('projects'),
-      },
-      {
         label: t('dashboard.storageUsed'),
         icon: 'S',
         value: stats.storageUsedPercent,
@@ -91,15 +84,24 @@ export default function Dashboard({ onNavigate }) {
         onClick: () => onNavigate('monitor'),
       },
       {
-        label: t('dashboard.cacheSize'),
+        label: t('dashboard.cpuUsage'),
         icon: 'C',
-        value: stats.cacheSizeBytes,
-        format: 'bytes',
-        tone: cacheNode?.meta?.unavailable ? 'normal' : 'good',
-        sub: cacheNode?.meta?.unavailable
-          ? t('dashboard.runCleanScan')
-          : t('dashboard.cleanupState'),
-        onClick: () => onNavigate('cleanup'),
+        value: metrics.cpu?.usagePercent,
+        format: 'percent',
+        tone: dataTone(metrics.cpu?.usagePercent),
+        sub: `${metrics.cpu?.cores || '--'} cores`,
+        onClick: () => onNavigate('monitor'),
+      },
+      {
+        label: t('dashboard.ramUsage'),
+        icon: 'R',
+        value: metrics.memory?.usagePercent,
+        format: 'percent',
+        tone: dataTone(metrics.memory?.usagePercent),
+        sub: metrics.memory
+          ? `${formatBytes(metrics.memory.usedBytes)} / ${formatBytes(metrics.memory.totalBytes)}`
+          : t('dashboard.unavailable'),
+        onClick: () => onNavigate('monitor'),
       },
       {
         label: t('dashboard.systemHealth'),
@@ -118,7 +120,7 @@ export default function Dashboard({ onNavigate }) {
         onClick: () => onNavigate('history'),
       },
     ],
-    [cacheNode, onNavigate, stats, t],
+    [metrics, onNavigate, stats, t],
   );
 
   const handleNodeOpen = useCallback(
@@ -135,7 +137,7 @@ export default function Dashboard({ onNavigate }) {
 
   return (
     <div className="dashboard-page-v3">
-      <section className="dashboard-hero-v3">
+      <section className="dashboard-hero-v3 dashboard-command-head">
         <div className="hero-copy">
           <span className="hero-kicker">{t('dashboard.kicker')}</span>
           <h1>{t('dashboard.title')}</h1>
@@ -168,13 +170,15 @@ export default function Dashboard({ onNavigate }) {
         </InlineAlert>
       ) : null}
 
-      <div className="dashboard-main-grid">
+      <div className="dashboard-kpi-strip">
+        {highlights.map((item) => (
+          <StatCard key={item.label} loading={loading && !data} {...item} />
+        ))}
+      </div>
+
+      <div className="dashboard-main-grid dashboard-command-grid">
+        <SystemOverview data={data} onNavigate={onNavigate} />
         <div className="dashboard-center">
-          <div className="floating-stat-grid">
-            {highlights.map((item) => (
-              <StatCard key={item.label} loading={loading && !data} {...item} />
-            ))}
-          </div>
           <DashboardGlobe
             nodes={nodes}
             loading={loading && !data}
@@ -205,17 +209,16 @@ export default function Dashboard({ onNavigate }) {
             </strong>
           </div>
         </div>
-        <SystemOverview data={data} onNavigate={onNavigate} />
+        <FileAnalytics
+          files={data?.files}
+          projects={data?.projects}
+          system={data?.system}
+          notifications={data?.notifications}
+          onNavigate={onNavigate}
+        />
       </div>
 
       <RecentActivities activities={data?.activities || []} onNavigate={onNavigate} />
-
-      <FileAnalytics
-        projects={data?.projects}
-        system={data?.system}
-        notifications={data?.notifications}
-        onNavigate={onNavigate}
-      />
 
       {storageNode?.meta?.unavailable || data?.unavailable?.length ? (
         <div className="dashboard-unavailable glass-card">
