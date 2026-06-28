@@ -6,6 +6,7 @@
 
 One place to launch projects, organize files, monitor system health, and keep daily development workflows tidy — without replacing your task manager or IDE.
 
+[![Clone](https://img.shields.io/badge/clone%20and%20build-ready-14b8a6.svg)](#install-on-your-pc)
 [![Version](https://img.shields.io/badge/version-2.2.0-2f7bf6.svg)](#)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d6.svg)](#requirements)
 [![Electron](https://img.shields.io/badge/Electron-42-47848f.svg)](https://www.electronjs.org/)
@@ -30,6 +31,7 @@ PC Life Assistant combines a daily workspace dashboard, project launcher, file o
 The goal is not to be another todo list — it's to **remove the small repeated steps** around everyday computer work: opening the same folders and tools, sorting the Downloads folder, keeping an eye on disk space and temperatures, and remembering which projects still need a Git commit.
 
 - 🔒 **Review-first & safe by design** — file actions preview before moving, never auto-delete, and Git & Security features are read-only.
+- 🧼 **Clean public source** — the repository ships only sanitized templates and source code, so anyone can clone it and create their own local settings on first run.
 - 🧩 **No account, no cloud, no database** — every setting lives in a local JSON file.
 - 🛡️ **No admin rights required** — works entirely within the folders you configure.
 
@@ -202,16 +204,79 @@ pc-life-assistant/
 - Windows 10 or later (Windows 11 recommended).
 - Node.js 18 or later.
 - npm.
+- Git, if you want to clone the source code instead of downloading a ZIP.
 - VS Code is optional but recommended for project launching features.
 - Optional, for the System Overlay only: Intel PresentMon or NVIDIA FrameView for the in-game FPS counter, and an NVIDIA GPU with `nvidia-smi` for GPU usage / VRAM. The overlay degrades gracefully and shows "N/A" when these are unavailable.
+
+---
+
+## Install On Your PC
+
+There are two ways to use PC Life Assistant locally.
+
+### Option A: Install the packaged app
+
+1. Go to this repository's **Releases** page, if a release installer has been attached.
+2. Download `PC-Life-Assistant-Setup-2.2.0.exe`.
+3. Run the installer.
+4. Launch **PC Life Assistant** from the Start menu or desktop shortcut.
+
+The installer is per-user by default. On first launch, the app creates fresh local settings under your own Windows account:
+
+```text
+%APPDATA%\PC Life Assistant\user-settings.json
+```
+
+No developer machine paths, project folders, history, or private settings are bundled into the installer.
+
+### Option B: Clone and run from source
+
+Open PowerShell and run:
+
+```powershell
+git clone https://github.com/jeremywu0420/windows-assistant.git
+cd windows-assistant
+npm ci
+npm run dev
+```
+
+This starts Vite and Electron together. The app creates a local development settings file at:
+
+```text
+config/user-settings.json
+```
+
+That file is git-ignored because it contains your own folders and preferences.
+
+### Build your own installer
+
+From the cloned repository:
+
+```powershell
+npm ci
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run package
+```
+
+The generated installer is written to:
+
+```text
+release-auto\PC-Life-Assistant-Setup-2.2.0.exe
+```
+
+Build outputs such as `dist/`, `release-auto/`, `node_modules/`, generated icons, logs, and real settings files are intentionally ignored by Git.
 
 ---
 
 ## 🛠️ Development
 
 ```bash
-# Install dependencies
-npm install
+# Install exact dependencies from package-lock.json
+npm ci
 
 # Run the desktop app in development (Vite + Electron)
 npm run dev
@@ -228,30 +293,35 @@ npm run package:dir
 
 ### Scripts
 
-| Script                   | Purpose                                               |
-| ------------------------ | ----------------------------------------------------- |
-| `npm run dev`            | Starts Vite and Electron for local development.       |
-| `npm run dev:vite`       | Starts only the Vite dev server.                      |
-| `npm run dev:electron`   | Starts only Electron after the renderer is available. |
-| `npm run build`          | Builds the React renderer.                            |
-| `npm run preview`        | Previews the built renderer.                          |
-| `npm run gen:icons`      | Generates app icon assets.                            |
-| `npm run package`        | Builds and packages the Windows installer.            |
-| `npm run package:dir`    | Builds an unpacked Windows app directory.             |
-| `npm run release:github` | Builds and publishes a GitHub release.                |
-| `npm run lint`           | Runs ESLint.                                          |
-| `npm run typecheck`      | Type-checks with `tsc --noEmit`.                      |
-| `npm run test`           | Runs the Vitest unit suite.                           |
-| `npm run format`         | Formats the codebase with Prettier.                   |
+| Script                   | Purpose                                                          |
+| ------------------------ | ---------------------------------------------------------------- |
+| `npm run dev`            | Starts Vite and Electron for local development.                  |
+| `npm run dev:vite`       | Starts only the Vite dev server.                                 |
+| `npm run dev:electron`   | Starts only Electron after the renderer is available.            |
+| `npm run build`          | Builds the React renderer.                                       |
+| `npm run preview`        | Previews the built renderer.                                     |
+| `npm run gen:icons`      | Generates app icon assets.                                       |
+| `npm run package`        | Builds and packages the Windows installer.                       |
+| `npm run package:dir`    | Builds an unpacked Windows app directory.                        |
+| `npm run release:github` | Maintainer release helper after publish settings are configured. |
+| `npm run lint`           | Runs ESLint.                                                     |
+| `npm run typecheck`      | Type-checks with `tsc --noEmit`.                                 |
+| `npm run test`           | Runs the Vitest unit suite.                                      |
+| `npm run format`         | Formats the codebase with Prettier.                              |
 
 ### Quality & contributing
 
-The project ships with ESLint + Prettier, a Vitest unit suite, strict
-TypeScript checking, and a GitHub Actions CI pipeline (lint → typecheck → test →
-build on Node 20 & 22). See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for how the
-main process, preload bridge, and renderer fit together, and
-**[CONTRIBUTING.md](./CONTRIBUTING.md)** for setup, the quality gates, and the
-patterns for adding a backend capability or a workflow node type.
+The project ships with ESLint + Prettier, a Vitest unit suite, strict TypeScript checking, and a GitHub Actions CI pipeline. The expected local gate is:
+
+```bash
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for how the main process, preload bridge, and renderer fit together, and **[CONTRIBUTING.md](./CONTRIBUTING.md)** for setup, quality gates, and patterns for adding a backend capability or workflow node type.
 
 ---
 
@@ -266,7 +336,9 @@ The app stores preferences in a local JSON settings file:
 - theme and compact mode;
 - notification and automation preferences.
 
-The repository ships a sanitized template, `config/user-settings.example.json`. On first run the app creates its own settings file from that template — `config/user-settings.json` in development (git-ignored, because it records personal folder paths) and `%APPDATA%\PC Life Assistant\user-settings.json` in a packaged build. Your real paths never need to be committed.
+The repository ships a sanitized template, `config/user-settings.example.json`. On first run the app creates its own settings file from that template — `config/user-settings.json` in development and `%APPDATA%\PC Life Assistant\user-settings.json` in a packaged build.
+
+Both locations are local to the person running the app. Real paths, personal project roots, runtime history, logs, generated installers, dependency folders, and private endpoints should never be committed.
 
 ---
 
