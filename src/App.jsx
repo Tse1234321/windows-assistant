@@ -14,7 +14,6 @@ import SystemMonitor from './pages/SystemMonitor.jsx';
 import Screenshots from './pages/Screenshots.jsx';
 import Rules from './pages/Rules.jsx';
 import HealthMonitor from './pages/HealthMonitor.jsx';
-import SecurityCenter from './pages/SecurityCenter.tsx';
 import Settings from './pages/Settings.jsx';
 import CleanCenter from './pages/CleanCenter.jsx';
 import SetupWizard from './pages/SetupWizard.jsx';
@@ -114,8 +113,6 @@ function Shell() {
         return <Screenshots />;
       case 'rules':
         return <Rules />;
-      case 'security':
-        return <SecurityCenter />;
       case 'health':
         return <HealthMonitor />;
       case 'notifications':

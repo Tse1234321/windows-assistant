@@ -34,13 +34,6 @@ contextBridge.exposeInMainWorld('api', {
   // System / health
   getDashboardStats: () => ipcRenderer.invoke('dashboard:getStats'),
   getSystemStatus: () => ipcRenderer.invoke('system:getStatus'),
-  security: {
-    getStatus: () => ipcRenderer.invoke('security:getStatus'),
-    quickScan: () => ipcRenderer.invoke('security:quickScan'),
-    updateSignatures: () => ipcRenderer.invoke('security:updateSignatures'),
-    openWindowsSecurity: () => ipcRenderer.invoke('security:openWindowsSecurity'),
-    openFirewallSettings: () => ipcRenderer.invoke('security:openFirewallSettings'),
-  },
 
   // Quick modes
   listModes: () => ipcRenderer.invoke('mode:list'),

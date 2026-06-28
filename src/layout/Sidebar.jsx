@@ -11,7 +11,6 @@ export const NAV_SECTIONS = [
       { key: 'projects', label: 'nav.projects', icon: 'nodes' },
       { key: 'cleanup', label: 'nav.cleanup', icon: 'spark' },
       { key: 'monitor', label: 'nav.monitor', icon: 'pulse' },
-      { key: 'security', label: '安全性中心', icon: 'securityCenter' },
       { key: 'automations', label: 'nav.automations', icon: 'bolt' },
       { key: 'workflows', label: 'nav.workflows', icon: 'nodes' },
       { key: 'settings', label: 'nav.settings', icon: 'gear' },
@@ -56,7 +55,6 @@ function Icon({ name }) {
     nodes: <path d="M7 7h.01M17 6h.01M12 17h.01M8 8l3 7M16 8l-3 7M9 7h6" />,
     spark: <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />,
     pulse: <path d="M3 12h4l2-6 4 12 2-6h6" />,
-    securityCenter: <path d="M12 3l8 4v5c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V7zM9 12l2 2 4-5" />,
     bolt: <path d="M13 2L5 13h6l-2 9 8-12h-6z" />,
     gear: (
       <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 12h2M18 12h2M12 4v2M12 18v2M6.5 6.5l1.4 1.4M16.1 16.1l1.4 1.4M17.5 6.5l-1.4 1.4M7.9 16.1l-1.4 1.4" />

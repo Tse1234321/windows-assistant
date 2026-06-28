@@ -39,7 +39,6 @@ const buildService = require('./services/buildService');
 const serialService = require('./services/serialService');
 const dashboardService = require('./services/dashboardService');
 const overlayMetricsService = require('./services/overlayMetricsService');
-const securityService = require('./services/securityService');
 const { logger } = require('./services/loggerService');
 
 const isDev = !app.isPackaged;
@@ -679,48 +678,6 @@ function registerIpc() {
       };
     } catch (err) {
       return { ok: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('security:getStatus', async () => {
-    try {
-      return await securityService.getSecurityStatus();
-    } catch (err) {
-      return { ok: false, code: 'SECURITY_SERVICE_FAILED', error: err.message };
-    }
-  });
-
-  ipcMain.handle('security:quickScan', async () => {
-    try {
-      return await securityService.startQuickScan();
-    } catch (err) {
-      return { ok: false, code: 'SECURITY_SERVICE_FAILED', error: err.message };
-    }
-  });
-
-  ipcMain.handle('security:updateSignatures', async () => {
-    try {
-      return await securityService.updateSignatures();
-    } catch (err) {
-      return { ok: false, code: 'SECURITY_SERVICE_FAILED', error: err.message };
-    }
-  });
-
-  ipcMain.handle('security:openWindowsSecurity', async () => {
-    try {
-      await shell.openExternal('ms-settings:windowsdefender');
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, code: 'OPEN_SETTINGS_FAILED', error: err.message };
-    }
-  });
-
-  ipcMain.handle('security:openFirewallSettings', async () => {
-    try {
-      await shell.openExternal('ms-settings:windowsdefender');
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, code: 'OPEN_SETTINGS_FAILED', error: err.message };
     }
   });
 

@@ -8,14 +8,6 @@
  * move to TypeScript.
  */
 
-interface SecurityApi {
-  getStatus?: () => Promise<unknown>;
-  quickScan?: () => Promise<unknown>;
-  updateSignatures?: () => Promise<unknown>;
-  openWindowsSecurity?: () => Promise<unknown>;
-  openFirewallSettings?: () => Promise<unknown>;
-}
-
 interface WorkflowsApi {
   list?: () => Promise<unknown>;
   save?: (workflow: unknown) => Promise<unknown>;
@@ -25,7 +17,6 @@ interface WorkflowsApi {
 }
 
 interface AppApi {
-  security?: SecurityApi;
   workflows?: WorkflowsApi;
   // Other namespaces (cleanup, modes, files, …) are still untyped.
   [key: string]: unknown;
