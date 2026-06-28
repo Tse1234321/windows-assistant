@@ -18,7 +18,8 @@ const cleanupApi = {
   removeIgnoreItem: (id) => ipcRenderer.invoke('cleanup:removeIgnoreItem', id),
   getDiskUsage: (drivePath) => ipcRenderer.invoke('cleanup:getDiskUsage', drivePath),
   getRecommendations: (payload) => ipcRenderer.invoke('cleanup:getRecommendations', payload),
-  runAutomationAction: (type, options) => ipcRenderer.invoke('cleanup:automationAction', type, options),
+  runAutomationAction: (type, options) =>
+    ipcRenderer.invoke('cleanup:automationAction', type, options),
   getRecycleBin: () => ipcRenderer.invoke('cleanup:recycleBin'),
   emptyRecycleBin: () => ipcRenderer.invoke('cleanup:emptyRecycleBin'),
   getStartupItems: () => ipcRenderer.invoke('cleanup:startupItems'),
@@ -70,6 +71,15 @@ contextBridge.exposeInMainWorld('api', {
   listAutomations: () => ipcRenderer.invoke('automations:list'),
   saveAutomations: (automations) => ipcRenderer.invoke('automations:save', automations),
   runAutomation: (ruleId) => ipcRenderer.invoke('automations:run', ruleId),
+
+  // Visual workflow engine (node-based automation graphs)
+  workflows: {
+    list: () => ipcRenderer.invoke('workflow:list'),
+    save: (workflows) => ipcRenderer.invoke('workflow:save', workflows),
+    run: (id) => ipcRenderer.invoke('workflow:run', id),
+    dryRun: (id) => ipcRenderer.invoke('workflow:dryRun', id),
+    setEnabled: (id, enabled) => ipcRenderer.invoke('workflow:setEnabled', { id, enabled }),
+  },
 
   // Notifications
   testNotification: () => ipcRenderer.invoke('notifications:test'),
@@ -150,7 +160,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Screenshot Organizer
   getScreenshotSettings: () => ipcRenderer.invoke('screenshots:getSettings'),
-  updateScreenshotSettings: (settings) => ipcRenderer.invoke('screenshots:updateSettings', settings),
+  updateScreenshotSettings: (settings) =>
+    ipcRenderer.invoke('screenshots:updateSettings', settings),
   scanScreenshots: (payload) => ipcRenderer.invoke('screenshots:scan', payload),
   organizeScreenshots: (payload) => ipcRenderer.invoke('screenshots:organize', payload),
 

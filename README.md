@@ -6,6 +6,7 @@
 
 One place to launch projects, organize files, monitor system health, and keep daily development workflows tidy — without replacing your task manager or IDE.
 
+[![CI](https://github.com/jeremywu0420/windows-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/jeremywu0420/windows-assistant/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/badge/version-2.2.0-2f7bf6.svg)](https://github.com/jeremywu0420/windows-assistant/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d6.svg)](#requirements)
 [![Electron](https://img.shields.io/badge/Electron-42-47848f.svg)](https://www.electronjs.org/)
@@ -39,25 +40,26 @@ The goal is not to be another todo list — it's to **remove the small repeated 
 
 ## 🚀 Key Features
 
-| Area | What it does |
-| --- | --- |
-| **Dashboard** | Redesigned home view with an interactive 3D "live nodes" globe (Three.js), health score, live system overview (CPU / RAM / disk / network), cleanup state, and recent activity. |
-| **Project Hub** | Scans your project roots, classifies projects by type, detects Git repos, filters and pins, and turns selected projects into a reusable Work Mode. |
-| **Work Modes** | Opens apps, folders, URLs, and shell commands as one repeatable workspace — for coding, study, design, reports, or hardware work. |
-| **Workspace Templates** | Generates starter folders for Web, Python, JS/TS, C/C++, Java, Go, Rust, Arduino, FPGA (Verilog/VHDL), STM32, MATLAB, KiCad, and custom multi-language combos. |
-| **Clean Center** | Reviews temp files, caches, large files, duplicates, downloads, and recycle bin — with conservative safety rules and confirm-before-action. |
-| **Downloads Organizer** | Scans Downloads, previews planned moves, classifies by rules, never overwrites, and keeps a restore option. |
-| **Screenshot Organizer** | Groups screenshots by date and category using configurable keyword rules. |
-| **System Monitor** | Live CPU / RAM / disk / uptime, CPU & GPU temperatures, trend sparklines, and a tunable Health Guard. |
-| **Command Cheatsheet** | A searchable reference of Git, npm, Python, and per-language build commands — one click to copy, plus your own custom entries. |
-| **Toolchain Doctor** | Detects whether dev/EE toolchains (Arduino CLI, Icarus Verilog, GHDL, ARM GCC, OpenOCD, CMake, Ninja, Octave, KiCad CLI, Node, Git, Python) are installed, with version, resolved PATH, and a one-click install hint. |
-| **EE Quick Tools** | Built-in calculators for electrical engineering: Ohm's law, voltage divider, bidirectional resistor colour-code (colours ⇄ value), RC/RL/LC, series/parallel, and base conversion — all engineering-notation aware. |
-| **Embedded Lab** | Detects and compiles/simulates Arduino, Verilog, VHDL, Octave, and CMake projects with streamed build output, one-click flash to an Arduino board (with confirmation), plus a read-only serial monitor (COM port list + live data). |
-| **Automations** | Safe scheduled reminders and helper actions for cleanup, screenshots, and project rescans. |
-| **Command Palette** | Global quick actions (Ctrl+Shift+P / Ctrl+K) for navigation, project actions, health checks, and cleanup. |
-| **Security Center** | Read-only overview of Windows Security — Microsoft Defender, Firewall, account protection, app & browser control, device security (TPM / Secure Boot / BitLocker / Memory Integrity), and protection history — with one-click Quick Scan, signature update, and shortcuts to Windows settings. |
-| **System Overlay** | Optional always-on-top performance HUD (RTSS / Afterburner style) showing FPS and 1% low, CPU usage / power / temperature / clock, GPU usage / temperature / VRAM, and RAM — toggleable from the tray, with click-through. |
-| **Setup Wizard** | Guided first-run configuration for folders, screenshots, VS Code, project roots, and monitoring. |
+| Area                     | What it does                                                                                                                                                                                                                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dashboard**            | Redesigned home view with an interactive 3D "live nodes" globe (Three.js), health score, live system overview (CPU / RAM / disk / network), cleanup state, and recent activity.                                                                                                                |
+| **Project Hub**          | Scans your project roots, classifies projects by type, detects Git repos, filters and pins, and turns selected projects into a reusable Work Mode.                                                                                                                                             |
+| **Work Modes**           | Opens apps, folders, URLs, and shell commands as one repeatable workspace — for coding, study, design, reports, or hardware work.                                                                                                                                                              |
+| **Workspace Templates**  | Generates starter folders for Web, Python, JS/TS, C/C++, Java, Go, Rust, Arduino, FPGA (Verilog/VHDL), STM32, MATLAB, KiCad, and custom multi-language combos.                                                                                                                                 |
+| **Clean Center**         | Reviews temp files, caches, large files, duplicates, downloads, and recycle bin — with conservative safety rules and confirm-before-action.                                                                                                                                                    |
+| **Downloads Organizer**  | Scans Downloads, previews planned moves, classifies by rules, never overwrites, and keeps a restore option.                                                                                                                                                                                    |
+| **Screenshot Organizer** | Groups screenshots by date and category using configurable keyword rules.                                                                                                                                                                                                                      |
+| **System Monitor**       | Live CPU / RAM / disk / uptime, CPU & GPU temperatures, trend sparklines, and a tunable Health Guard.                                                                                                                                                                                          |
+| **Command Cheatsheet**   | A searchable reference of Git, npm, Python, and per-language build commands — one click to copy, plus your own custom entries.                                                                                                                                                                 |
+| **Toolchain Doctor**     | Detects whether dev/EE toolchains (Arduino CLI, Icarus Verilog, GHDL, ARM GCC, OpenOCD, CMake, Ninja, Octave, KiCad CLI, Node, Git, Python) are installed, with version, resolved PATH, and a one-click install hint.                                                                          |
+| **EE Quick Tools**       | Built-in calculators for electrical engineering: Ohm's law, voltage divider, bidirectional resistor colour-code (colours ⇄ value), RC/RL/LC, series/parallel, and base conversion — all engineering-notation aware.                                                                            |
+| **Embedded Lab**         | Detects and compiles/simulates Arduino, Verilog, VHDL, Octave, and CMake projects with streamed build output, one-click flash to an Arduino board (with confirmation), plus a read-only serial monitor (COM port list + live data).                                                            |
+| **Automations**          | Safe scheduled reminders and helper actions for cleanup, screenshots, and project rescans.                                                                                                                                                                                                     |
+| **Visual Automation**    | A node-based editor (trigger → condition → action) for building automation workflows on a drag-and-drop canvas. Reuses the same safe, review-first actions; file-mutating steps are flagged and confirmed, and a dry-run previews exactly what a workflow would do before it runs.             |
+| **Command Palette**      | Global quick actions (Ctrl+Shift+P / Ctrl+K) for navigation, project actions, health checks, and cleanup.                                                                                                                                                                                      |
+| **Security Center**      | Read-only overview of Windows Security — Microsoft Defender, Firewall, account protection, app & browser control, device security (TPM / Secure Boot / BitLocker / Memory Integrity), and protection history — with one-click Quick Scan, signature update, and shortcuts to Windows settings. |
+| **System Overlay**       | Optional always-on-top performance HUD (RTSS / Afterburner style) showing FPS and 1% low, CPU usage / power / temperature / clock, GPU usage / temperature / VRAM, and RAM — toggleable from the tray, with click-through.                                                                     |
+| **Setup Wizard**         | Guided first-run configuration for folders, screenshots, VS Code, project roots, and monitoring.                                                                                                                                                                                               |
 
 ---
 
@@ -171,28 +173,28 @@ pc-life-assistant/
 
 ## 🗂️ Main Screens
 
-| Screen | Purpose |
-| --- | --- |
-| Dashboard | Redesigned daily status with a 3D live-nodes globe, quick actions, pinned projects, and health overview. |
-| Project Hub | Project scanning, search, filters, Git state, pinning, and Work Mode creation. |
-| Work Modes | Create, edit, duplicate, and launch repeatable workspaces. |
-| Workspace Templates | Generate starter folder structures for common project types. |
-| File Organizer | Preview and organize downloads or a selected folder. |
-| Screenshots | Scan and organize screenshot images by date and category. |
-| Clean Center | Review cleanup candidates and safe maintenance suggestions. |
-| Automations | Configure scheduled reminders and safe helper actions. |
-| System Monitor | Inspect live hardware and resource status. |
-| Health Monitor | Review health checks, recommendations, and guard settings. |
-| Command Cheatsheet | Copy-ready Git / npm / Python / build commands. |
-| Toolchain Doctor | Detect installed dev/EE toolchains, versions, and PATH, with install hints. |
-| EE Quick Tools | Electrical-engineering calculators (Ohm's law, dividers, bidirectional resistor colour code, RC/LC, base conversion). |
-| Embedded Lab | Compile/simulate Arduino/Verilog/VHDL/Octave/CMake projects, one-click flash to Arduino, and monitor a serial port. |
-| Notification Center | Review app notifications and related actions. |
-| Activity History | Review recent organize, cleanup, and notification activity. |
-| Settings | Manage paths, appearance, health guard, cleanup behavior, and preferences. |
-| Setup Wizard | Guided first-run setup for important folders and tools. |
-| Security Center | Read-only Windows Security overview with Quick Scan, signature update, and settings shortcuts. |
-| System Overlay | Always-on-top FPS / CPU / GPU / RAM performance HUD. |
+| Screen              | Purpose                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Dashboard           | Redesigned daily status with a 3D live-nodes globe, quick actions, pinned projects, and health overview.              |
+| Project Hub         | Project scanning, search, filters, Git state, pinning, and Work Mode creation.                                        |
+| Work Modes          | Create, edit, duplicate, and launch repeatable workspaces.                                                            |
+| Workspace Templates | Generate starter folder structures for common project types.                                                          |
+| File Organizer      | Preview and organize downloads or a selected folder.                                                                  |
+| Screenshots         | Scan and organize screenshot images by date and category.                                                             |
+| Clean Center        | Review cleanup candidates and safe maintenance suggestions.                                                           |
+| Automations         | Configure scheduled reminders and safe helper actions.                                                                |
+| System Monitor      | Inspect live hardware and resource status.                                                                            |
+| Health Monitor      | Review health checks, recommendations, and guard settings.                                                            |
+| Command Cheatsheet  | Copy-ready Git / npm / Python / build commands.                                                                       |
+| Toolchain Doctor    | Detect installed dev/EE toolchains, versions, and PATH, with install hints.                                           |
+| EE Quick Tools      | Electrical-engineering calculators (Ohm's law, dividers, bidirectional resistor colour code, RC/LC, base conversion). |
+| Embedded Lab        | Compile/simulate Arduino/Verilog/VHDL/Octave/CMake projects, one-click flash to Arduino, and monitor a serial port.   |
+| Notification Center | Review app notifications and related actions.                                                                         |
+| Activity History    | Review recent organize, cleanup, and notification activity.                                                           |
+| Settings            | Manage paths, appearance, health guard, cleanup behavior, and preferences.                                            |
+| Setup Wizard        | Guided first-run setup for important folders and tools.                                                               |
+| Security Center     | Read-only Windows Security overview with Quick Scan, signature update, and settings shortcuts.                        |
+| System Overlay      | Always-on-top FPS / CPU / GPU / RAM performance HUD.                                                                  |
 
 ---
 
@@ -227,17 +229,30 @@ npm run package:dir
 
 ### Scripts
 
-| Script | Purpose |
-| --- | --- |
-| `npm run dev` | Starts Vite and Electron for local development. |
-| `npm run dev:vite` | Starts only the Vite dev server. |
-| `npm run dev:electron` | Starts only Electron after the renderer is available. |
-| `npm run build` | Builds the React renderer. |
-| `npm run preview` | Previews the built renderer. |
-| `npm run gen:icons` | Generates app icon assets. |
-| `npm run package` | Builds and packages the Windows installer. |
-| `npm run package:dir` | Builds an unpacked Windows app directory. |
-| `npm run release:github` | Builds and publishes a GitHub release. |
+| Script                   | Purpose                                               |
+| ------------------------ | ----------------------------------------------------- |
+| `npm run dev`            | Starts Vite and Electron for local development.       |
+| `npm run dev:vite`       | Starts only the Vite dev server.                      |
+| `npm run dev:electron`   | Starts only Electron after the renderer is available. |
+| `npm run build`          | Builds the React renderer.                            |
+| `npm run preview`        | Previews the built renderer.                          |
+| `npm run gen:icons`      | Generates app icon assets.                            |
+| `npm run package`        | Builds and packages the Windows installer.            |
+| `npm run package:dir`    | Builds an unpacked Windows app directory.             |
+| `npm run release:github` | Builds and publishes a GitHub release.                |
+| `npm run lint`           | Runs ESLint.                                          |
+| `npm run typecheck`      | Type-checks with `tsc --noEmit`.                      |
+| `npm run test`           | Runs the Vitest unit suite.                           |
+| `npm run format`         | Formats the codebase with Prettier.                   |
+
+### Quality & contributing
+
+The project ships with ESLint + Prettier, a Vitest unit suite, strict
+TypeScript checking, and a GitHub Actions CI pipeline (lint → typecheck → test →
+build on Node 20 & 22). See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for how the
+main process, preload bridge, and renderer fit together, and
+**[CONTRIBUTING.md](./CONTRIBUTING.md)** for setup, the quality gates, and the
+patterns for adding a backend capability or a workflow node type.
 
 ---
 

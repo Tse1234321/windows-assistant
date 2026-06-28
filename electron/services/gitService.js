@@ -66,7 +66,10 @@ async function checkProject(project) {
   // Count modified / untracked files.
   const status = await runGit(['status', '--porcelain'], project.path);
   if (status.ok) {
-    const lines = status.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+    const lines = status.stdout
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
     base.modifiedCount = lines.length;
   }
 
@@ -93,11 +96,15 @@ async function checkProject(project) {
   if (base.hoursSinceCommit !== null) {
     if (base.hoursSinceCommit >= gitReminderHours) {
       base.gitReminder = true;
-      base.messages.push(`已超過 ${Math.floor(base.hoursSinceCommit)} 小時沒有 commit（設定 ${gitReminderHours} 小時）`);
+      base.messages.push(
+        `已超過 ${Math.floor(base.hoursSinceCommit)} 小時沒有 commit（設定 ${gitReminderHours} 小時）`,
+      );
     }
     if (base.hoursSinceCommit >= backupReminderHours) {
       base.backupReminder = true;
-      base.messages.push(`已超過 ${Math.floor(base.hoursSinceCommit)} 小時沒有備份（設定 ${backupReminderHours} 小時）`);
+      base.messages.push(
+        `已超過 ${Math.floor(base.hoursSinceCommit)} 小時沒有備份（設定 ${backupReminderHours} 小時）`,
+      );
     }
   }
 
@@ -111,11 +118,10 @@ async function checkAll(projects) {
   const results = [];
   for (const project of projects) {
     // Sequential keeps it simple and avoids spawning too many git processes at once.
-    // eslint-disable-next-line no-await-in-loop
     results.push(await checkProject(project));
   }
   const hasStaleProject = results.some(
-    (r) => r.isGitRepo && r.hoursSinceCommit !== null && r.hoursSinceCommit >= 24
+    (r) => r.isGitRepo && r.hoursSinceCommit !== null && r.hoursSinceCommit >= 24,
   );
   return { ok: true, projects: results, hasStaleProject };
 }

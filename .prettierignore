@@ -1,0 +1,8 @@
+node_modules
+dist
+release-auto
+build
+coverage
+*.min.js
+config/user-settings.json
+config/runtime-state.json

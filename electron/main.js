@@ -2,7 +2,19 @@
 
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage, globalShortcut, dialog, powerMonitor, screen } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  Tray,
+  Menu,
+  ipcMain,
+  shell,
+  nativeImage,
+  globalShortcut,
+  dialog,
+  powerMonitor,
+  screen,
+} = require('electron');
 
 const settingsService = require('./services/settingsService');
 const systemMonitorService = require('./services/systemMonitorService');
@@ -18,6 +30,7 @@ const autoLaunchService = require('./services/autoLaunchService');
 const notificationService = require('./services/notificationService');
 const fileWatcherService = require('./services/fileWatcherService');
 const automationService = require('./services/automationService');
+const workflowService = require('./services/workflowService');
 const updateService = require('./services/updateService');
 const cleanupService = require('./services/cleanupService');
 const activityHistoryService = require('./services/activityHistoryService');
@@ -28,6 +41,7 @@ const serialService = require('./services/serialService');
 const dashboardService = require('./services/dashboardService');
 const overlayMetricsService = require('./services/overlayMetricsService');
 const securityService = require('./services/securityService');
+const { logger } = require('./services/loggerService');
 
 const isDev = !app.isPackaged;
 
@@ -42,19 +56,25 @@ if (isDev) {
 // In-memory record of the last organize batch (for undo).
 let lastOrganizeBatch = null;
 
-// --- Minimal file logger (errors are appended to <userData>/logs/app.log) ---
+// --- Structured logger (JSON lines at <userData>/logs/app.log) ---
+// writeLog keeps its old (level, message) signature so existing call sites are
+// untouched; it now routes through loggerService, which also keeps an in-memory
+// ring buffer for the diagnostics IPC below. Logging is local-only and can be
+// turned off via general.diagnostics === false.
 function logsDir() {
   return path.join(app.getPath('userData'), 'logs');
 }
-function writeLog(level, message) {
+function diagnosticsEnabled() {
   try {
-    const dir = logsDir();
-    fs.mkdirSync(dir, { recursive: true });
-    const line = `[${new Date().toISOString()}] [${level}] ${message}\n`;
-    fs.appendFileSync(path.join(dir, 'app.log'), line, 'utf-8');
+    return loadConfig().general?.diagnostics !== false;
   } catch (_) {
-    /* never let logging crash the app */
+    return true;
   }
+}
+function writeLog(level, message) {
+  if (!diagnosticsEnabled()) return;
+  const fn = logger[level] || logger.info;
+  fn(message);
 }
 
 // Catch otherwise-unhandled errors so they are logged instead of silently crashing the app.
@@ -113,6 +133,15 @@ function monitorFolders(config) {
       if (folder) folders.push(folder);
     });
   }
+  // Watch folders referenced by enabled workflow triggers, too.
+  workflowService.listWorkflows(config).forEach((wf) => {
+    if (!wf || wf.enabled === false) return;
+    (wf.nodes || []).forEach((node) => {
+      if (node && node.kind === 'trigger' && node.config && node.config.folder) {
+        folders.push(node.config.folder);
+      }
+    });
+  });
   return folders;
 }
 
@@ -125,7 +154,17 @@ async function onNewFile(info) {
     }
     if (g.automationsEnabled !== false) {
       const fired = await automationService.handleNewFile(config, info);
-      if (fired.length) writeLog('info', `automation fired for ${info.file}: ${JSON.stringify(fired)}`);
+      if (fired.length)
+        writeLog('info', `automation fired for ${info.file}: ${JSON.stringify(fired)}`);
+      // Run enabled visual workflows whose triggers match this file event.
+      const event = { kind: 'file', info };
+      for (const wf of workflowService.listWorkflows(config)) {
+        if (!wf || wf.enabled === false) continue;
+        const result = await workflowService.runWorkflow(wf, event, config);
+        if (result.ok && (result.steps || []).length) {
+          writeLog('info', `workflow "${wf.name}" fired for ${info.file}`);
+        }
+      }
     }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:file-event', { file: info.file, folder: info.folder });
@@ -146,6 +185,35 @@ function startMonitoring() {
   fileWatcherService.start(monitorFolders(config), onNewFile);
 }
 
+let workflowScheduleTimer = null;
+// Find an enabled workflow's schedule trigger that is currently due (reusing the
+// flat-automation timing + dedupe), so scheduled workflows don't fire every tick.
+function dueScheduleTrigger(workflow) {
+  return (workflow.nodes || []).find((node) => {
+    if (!node || node.kind !== 'trigger' || node.type !== 'schedule') return false;
+    return automationService.scheduleDueFor(`${workflow.id}:${node.id}`, node.config || {});
+  });
+}
+
+async function runScheduledWorkflows() {
+  const config = loadConfig();
+  if (config.general && config.general.automationsEnabled === false) return;
+  const event = { kind: 'schedule', info: { file: '', path: '', folder: '', ext: '', size: 0 } };
+  for (const wf of workflowService.listWorkflows(config)) {
+    if (!wf || wf.enabled === false) continue;
+    const dueNode = dueScheduleTrigger(wf);
+    if (!dueNode) continue;
+    automationService.markScheduleFired(`${wf.id}:${dueNode.id}`);
+    const result = await workflowService.runWorkflow(wf, event, config);
+    if (result.ok && (result.steps || []).length) {
+      writeLog('info', `scheduled workflow "${wf.name}" fired`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:automation-fired', result.steps);
+      }
+    }
+  }
+}
+
 function startBackgroundServices() {
   const getConfig = () => loadConfig();
   healthGuardService.start(getConfig, { runNow: true });
@@ -155,6 +223,9 @@ function startBackgroundServices() {
       mainWindow.webContents.send('app:automation-fired', fired);
     }
   });
+  // Separate minute-cadence tick for schedule-triggered visual workflows.
+  if (workflowScheduleTimer) clearInterval(workflowScheduleTimer);
+  workflowScheduleTimer = setInterval(() => runScheduledWorkflows().catch(() => {}), 60 * 1000);
 }
 
 function recordHistory(batch) {
@@ -531,11 +602,17 @@ function buildTrayMenu() {
         if (res.skipped) {
           notificationService.notify('PC Life Assistant', res.error);
         } else if (!res.ok) {
-          notificationService.notify('PC Life Assistant update failed', res.error || 'Update check failed.');
+          notificationService.notify(
+            'PC Life Assistant update failed',
+            res.error || 'Update check failed.',
+          );
         } else {
           const latest = updateService.getStatus().status;
           if (!latest.available && latest.state === 'idle') {
-            notificationService.notify('PC Life Assistant', 'You are already on the latest version.');
+            notificationService.notify(
+              'PC Life Assistant',
+              'You are already on the latest version.',
+            );
           }
         }
       },
@@ -587,7 +664,7 @@ function registerIpc() {
         monitorDrive: config.general && config.general.monitorDrive,
       });
       const downloadsPath = await fileOrganizerService.resolveDownloadsPath(
-        config.general && config.general.downloadsPath
+        config.general && config.general.downloadsPath,
       );
       const unsorted = fileOrganizerService.countUnsorted(downloadsPath);
       const git = await gitService.checkAll(config.projects);
@@ -694,22 +771,31 @@ function registerIpc() {
   ipcMain.handle('downloads:getDefaultPath', async () => fileOrganizerService.getDefaultPath());
   ipcMain.handle('downloads:detect', async () => fileOrganizerService.detectDownloads());
   ipcMain.handle('downloads:getSettings', async () => fileOrganizerService.getSettings());
-  ipcMain.handle('downloads:saveSettings', async (_event, settings) => fileOrganizerService.saveSettings(settings));
+  ipcMain.handle('downloads:saveSettings', async (_event, settings) =>
+    fileOrganizerService.saveSettings(settings),
+  );
 
   ipcMain.handle('downloads:selectFolder', async () => {
     try {
       const current = await fileOrganizerService.getSettings();
       const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Select folder to organize',
-        defaultPath: current.ok && current.settings.folderPath ? current.settings.folderPath : undefined,
+        defaultPath:
+          current.ok && current.settings.folderPath ? current.settings.folderPath : undefined,
         properties: ['openDirectory'],
       });
-      if (result.canceled || !result.filePaths || !result.filePaths.length) return { ok: false, canceled: true };
+      if (result.canceled || !result.filePaths || !result.filePaths.length)
+        return { ok: false, canceled: true };
       const saved = await fileOrganizerService.saveSettings({
         ...(current.settings || {}),
         folderPath: result.filePaths[0],
       });
-      return { ok: saved.ok, path: result.filePaths[0], settings: saved.settings, error: saved.error };
+      return {
+        ok: saved.ok,
+        path: result.filePaths[0],
+        settings: saved.settings,
+        error: saved.error,
+      };
     } catch (err) {
       return { ok: false, error: err.message };
     }
@@ -727,7 +813,15 @@ function registerIpc() {
 
   ipcMain.handle('downloads:organize', async (_event, payload = {}) => {
     const items = Array.isArray(payload) ? payload : payload.items;
-    if (!Array.isArray(items)) return { ok: false, moved: 0, copied: 0, failed: 0, results: [], error: 'Invalid organize items.' };
+    if (!Array.isArray(items))
+      return {
+        ok: false,
+        moved: 0,
+        copied: 0,
+        failed: 0,
+        results: [],
+        error: 'Invalid organize items.',
+      };
     const result = await fileOrganizerService.organize(items, payload.settings || {});
     lastOrganizeBatch = result.results || [];
     recordHistory(result);
@@ -749,7 +843,7 @@ function registerIpc() {
 
   ipcMain.handle('downloads:openFolder', async (_event, folderPath) => {
     try {
-      const p = folderPath || await fileOrganizerService.resolveDownloadsPath();
+      const p = folderPath || (await fileOrganizerService.resolveDownloadsPath());
       const err = await shell.openPath(p);
       return err ? { ok: false, error: err } : { ok: true, path: p };
     } catch (err) {
@@ -764,7 +858,15 @@ function registerIpc() {
   });
 
   ipcMain.handle('files:organize', async (_event, items) => {
-    if (!Array.isArray(items)) return { ok: false, moved: 0, copied: 0, failed: 0, results: [], error: 'Invalid organize items.' };
+    if (!Array.isArray(items))
+      return {
+        ok: false,
+        moved: 0,
+        copied: 0,
+        failed: 0,
+        results: [],
+        error: 'Invalid organize items.',
+      };
     return fileOrganizerService.organize(items);
   });
   ipcMain.handle('git:check', async () => {
@@ -778,17 +880,24 @@ function registerIpc() {
   const sendToRenderer = (channel, payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
   };
-  ipcMain.handle('build:detect', async (_event, folderPath) => buildService.detectBuild(folderPath));
+  ipcMain.handle('build:detect', async (_event, folderPath) =>
+    buildService.detectBuild(folderPath),
+  );
   ipcMain.handle('build:run', async (_event, folderPath) =>
-    buildService.runBuild(folderPath, (chunk) => sendToRenderer('app:build-output', chunk)));
+    buildService.runBuild(folderPath, (chunk) => sendToRenderer('app:build-output', chunk)),
+  );
   ipcMain.handle('build:flash', async (_event, payload = {}) =>
-    buildService.flash(payload.folderPath, payload.port, (chunk) => sendToRenderer('app:build-output', chunk)));
+    buildService.flash(payload.folderPath, payload.port, (chunk) =>
+      sendToRenderer('app:build-output', chunk),
+    ),
+  );
   ipcMain.handle('build:cancel', async () => buildService.cancelBuild());
 
   // Serial Monitor — list ports and stream incoming data.
   ipcMain.handle('serial:listPorts', async () => serialService.listPorts());
   ipcMain.handle('serial:open', async (_event, payload = {}) =>
-    serialService.openPort(payload, (chunk) => sendToRenderer('app:serial-data', chunk)));
+    serialService.openPort(payload, (chunk) => sendToRenderer('app:serial-data', chunk)),
+  );
   ipcMain.handle('serial:close', async () => serialService.closePort());
 
   ipcMain.handle('settings:get', async () => settingsService.getSettings());
@@ -819,7 +928,9 @@ function registerIpc() {
     if (saved.ok) applyOverlayWindowSettings();
     return saved;
   });
-  ipcMain.handle('overlay:getSnapshot', async () => overlayMetricsService.getOverlayMetrics(loadConfig()));
+  ipcMain.handle('overlay:getSnapshot', async () =>
+    overlayMetricsService.getOverlayMetrics(loadConfig()),
+  );
 
   ipcMain.handle('settings:getSetupStatus', async () => {
     const res = settingsService.getSettings();
@@ -833,7 +944,7 @@ function registerIpc() {
       ...check,
       ok: !!(check.path && fs.existsSync(check.path)),
     }));
-    const projectRoots = (((settings.projectHub || {}).scanRoots) || []).map((root) => ({
+    const projectRoots = ((settings.projectHub || {}).scanRoots || []).map((root) => ({
       path: root,
       ok: !!(root && fs.existsSync(root)),
     }));
@@ -883,9 +994,7 @@ function registerIpc() {
       const result = await dialog.showOpenDialog(mainWindow, {
         title: opts.title || (isFolder ? '選擇資料夾' : '選擇檔案'),
         properties: [isFolder ? 'openDirectory' : 'openFile'],
-        filters: isFolder
-          ? undefined
-          : opts.filters || [{ name: '所有檔案', extensions: ['*'] }],
+        filters: isFolder ? undefined : opts.filters || [{ name: '所有檔案', extensions: ['*'] }],
       });
       if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
         return { ok: false, canceled: true };
@@ -956,7 +1065,10 @@ function registerIpc() {
 
   ipcMain.handle('autolaunch:set', async (_event, value) => {
     const res = settingsService.getSettings();
-    const next = { ...res.settings, general: { ...(res.settings.general || {}), autoLaunch: !!value } };
+    const next = {
+      ...res.settings,
+      general: { ...(res.settings.general || {}), autoLaunch: !!value },
+    };
     const saved = settingsService.saveSettings(next);
     const applied = autoLaunchService.apply(!!value);
     return { ok: saved.ok, error: saved.error, supported: applied.supported, enabled: !!value };
@@ -1018,7 +1130,9 @@ function registerIpc() {
   ipcMain.handle('project:excludeFolder', async (_event, folderPath) => {
     const res = settingsService.getSettings();
     const hub = projectService.normalizeProjectHub(res.settings);
-    const excludes = Array.from(new Set([...(hub.excludeFolders || []), folderPath].filter(Boolean)));
+    const excludes = Array.from(
+      new Set([...(hub.excludeFolders || []), folderPath].filter(Boolean)),
+    );
     return settingsService.saveSettings({
       ...res.settings,
       projectHub: { ...hub, excludeFolders: excludes },
@@ -1038,7 +1152,9 @@ function registerIpc() {
 
       const projects = Array.isArray(res.settings.projects) ? [...res.settings.projects] : [];
       const target = String(created.project.path || '').toLowerCase();
-      const exists = projects.some((project) => String(project.path || '').toLowerCase() === target);
+      const exists = projects.some(
+        (project) => String(project.path || '').toLowerCase() === target,
+      );
       if (!exists) projects.push(created.project);
 
       const next = { ...res.settings, projects };
@@ -1046,12 +1162,14 @@ function registerIpc() {
         const modes = Array.isArray(next.modes) ? [...next.modes] : [];
         modes.push({
           name: `${created.project.name} 工作模式`,
-          apps: [{
-            name: 'VS Code',
-            path: (res.settings.general && res.settings.general.vscodePath) || 'Code.exe',
-            icon: 'VS',
-            workspaceFolder: created.project.path,
-          }],
+          apps: [
+            {
+              name: 'VS Code',
+              path: (res.settings.general && res.settings.general.vscodePath) || 'Code.exe',
+              icon: 'VS',
+              workspaceFolder: created.project.path,
+            },
+          ],
           folders: [created.project.path],
           urls: [payload.githubUrl || 'https://github.com/'],
           commands: [],
@@ -1096,7 +1214,9 @@ function registerIpc() {
 
   // --- Clean Center ---
   ipcMain.handle('cleanup:getSettings', async () => cleanupService.loadCleanupSettings());
-  ipcMain.handle('cleanup:saveSettings', async (_event, settings) => cleanupService.saveCleanupSettings(settings));
+  ipcMain.handle('cleanup:saveSettings', async (_event, settings) =>
+    cleanupService.saveCleanupSettings(settings),
+  );
   ipcMain.handle('cleanup:getLogs', async () => {
     const logs = await cleanupService.readCleanupLogs();
     return { ok: true, path: cleanupService.cleanupLogsPath(), logs };
@@ -1111,7 +1231,9 @@ function registerIpc() {
     }
   });
   ipcMain.handle('cleanup:clearLogs', async () => cleanupService.clearLogs());
-  ipcMain.handle('cleanup:exportLogs', async (_event, format = 'json') => cleanupService.exportLogs(format));
+  ipcMain.handle('cleanup:exportLogs', async (_event, format = 'json') =>
+    cleanupService.exportLogs(format),
+  );
   ipcMain.handle('cleanup:status', async () => cleanupService.getStatus());
   ipcMain.handle('cleanup:getSummary', async () => cleanupService.getStatus());
   ipcMain.handle('cleanup:scan', async (_event, payload = {}) => cleanupService.scan(payload));
@@ -1120,11 +1242,21 @@ function registerIpc() {
     return cleanupService.cleanSelectedFiles(items || [], payload.settings || {});
   });
   ipcMain.handle('cleanup:getIgnoreList', async () => cleanupService.getIgnoreList());
-  ipcMain.handle('cleanup:addIgnoreItem', async (_event, item) => cleanupService.addIgnoreItem(item));
-  ipcMain.handle('cleanup:removeIgnoreItem', async (_event, id) => cleanupService.removeIgnoreItem(id));
-  ipcMain.handle('cleanup:getDiskUsage', async (_event, drivePath) => cleanupService.getDiskUsage(drivePath));
-  ipcMain.handle('cleanup:getRecommendations', async (_event, payload = {}) => cleanupService.getRecommendations(payload));
-  ipcMain.handle('cleanup:automationAction', async (_event, type, options = {}) => cleanupService.runAutomationAction(type, options));
+  ipcMain.handle('cleanup:addIgnoreItem', async (_event, item) =>
+    cleanupService.addIgnoreItem(item),
+  );
+  ipcMain.handle('cleanup:removeIgnoreItem', async (_event, id) =>
+    cleanupService.removeIgnoreItem(id),
+  );
+  ipcMain.handle('cleanup:getDiskUsage', async (_event, drivePath) =>
+    cleanupService.getDiskUsage(drivePath),
+  );
+  ipcMain.handle('cleanup:getRecommendations', async (_event, payload = {}) =>
+    cleanupService.getRecommendations(payload),
+  );
+  ipcMain.handle('cleanup:automationAction', async (_event, type, options = {}) =>
+    cleanupService.runAutomationAction(type, options),
+  );
   ipcMain.handle('cleanup:recycleBin', async () => cleanupService.getRecycleBinInfo());
   ipcMain.handle('cleanup:emptyRecycleBin', async () => cleanupService.emptyRecycleBin());
   ipcMain.handle('cleanup:startupItems', async () => {
@@ -1133,9 +1265,10 @@ function registerIpc() {
   });
   ipcMain.handle('cleanup:openPath', async (_event, targetPath) => {
     try {
-      const p = targetPath && fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()
-        ? path.dirname(targetPath)
-        : targetPath;
+      const p =
+        targetPath && fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()
+          ? path.dirname(targetPath)
+          : targetPath;
       const err = await shell.openPath(p);
       return err ? { ok: false, error: err } : { ok: true, path: p };
     } catch (err) {
@@ -1187,7 +1320,14 @@ function registerIpc() {
 
   ipcMain.handle('screenshots:organize', async (_event, payload = {}) => {
     const items = Array.isArray(payload) ? payload : payload.items;
-    if (!Array.isArray(items)) return { ok: false, moved: 0, failed: 0, results: [], error: 'Invalid screenshot organize items.' };
+    if (!Array.isArray(items))
+      return {
+        ok: false,
+        moved: 0,
+        failed: 0,
+        results: [],
+        error: 'Invalid screenshot organize items.',
+      };
     return screenshotService.organizeScreenshots(items, payload.settings || {});
   });
 
@@ -1247,15 +1387,70 @@ function registerIpc() {
     return result;
   });
 
+  // --- Visual workflows (node-based automation graphs) ---
+  ipcMain.handle('workflow:list', async () => {
+    const config = loadConfig();
+    return { ok: true, workflows: workflowService.listWorkflows(config) };
+  });
+
+  ipcMain.handle('workflow:save', async (_event, workflows) => {
+    if (!Array.isArray(workflows)) return { ok: false, error: '無效的工作流資料' };
+    const res = settingsService.getSettings();
+    const saved = settingsService.saveSettings({ ...res.settings, workflows });
+    if (saved.ok) {
+      startMonitoring();
+      startBackgroundServices();
+      refreshTrayMenu();
+    }
+    return saved;
+  });
+
+  ipcMain.handle('workflow:run', async (_event, id) => {
+    const config = loadConfig();
+    const workflow = workflowService.listWorkflows(config).find((wf) => wf && wf.id === id);
+    if (!workflow) return { ok: false, error: '找不到工作流' };
+    const result = await workflowService.runWorkflow(workflow, { kind: 'manual' }, config);
+    writeLog('info', `workflow manual run: ${JSON.stringify(result)}`);
+    if (result.ok && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:automation-fired', result.steps || []);
+    }
+    return result;
+  });
+
+  ipcMain.handle('workflow:dryRun', async (_event, id) => {
+    const config = loadConfig();
+    const workflow = workflowService.listWorkflows(config).find((wf) => wf && wf.id === id);
+    if (!workflow) return { ok: false, error: '找不到工作流' };
+    return workflowService.dryRunWorkflow(workflow, { kind: 'manual' }, config);
+  });
+
+  ipcMain.handle('workflow:setEnabled', async (_event, { id, enabled } = {}) => {
+    const res = settingsService.getSettings();
+    const workflows = workflowService
+      .listWorkflows(res.settings)
+      .map((wf) => (wf && wf.id === id ? { ...wf, enabled: !!enabled } : wf));
+    const saved = settingsService.saveSettings({ ...res.settings, workflows });
+    if (saved.ok) {
+      startMonitoring();
+      startBackgroundServices();
+      refreshTrayMenu();
+    }
+    return saved;
+  });
+
   // --- Notifications ---
-  ipcMain.handle('notifications:test', async () => notificationService.notify('PC Life Assistant', '通知測試 ✅'));
+  ipcMain.handle('notifications:test', async () =>
+    notificationService.notify('PC Life Assistant', '通知測試 ✅'),
+  );
   ipcMain.handle('notifications:list', async () => notificationService.listEvents());
   ipcMain.handle('notifications:markRead', async (_event, id) => notificationService.markRead(id));
   ipcMain.handle('notifications:clear', async () => notificationService.clearEvents());
 
   // --- Activity History / Restore Center ---
   ipcMain.handle('history:list', async () => activityHistoryService.listHistory());
-  ipcMain.handle('history:restoreDownloadsLast', async () => activityHistoryService.restoreDownloadsLast());
+  ipcMain.handle('history:restoreDownloadsLast', async () =>
+    activityHistoryService.restoreDownloadsLast(),
+  );
 
   // --- Health Guard ---
   ipcMain.handle('healthGuard:get', async () => healthGuardService.status(loadConfig()));
@@ -1299,7 +1494,8 @@ function registerIpc() {
         properties: ['openFile'],
         filters: [{ name: 'JSON', extensions: ['json'] }],
       });
-      if (inp.canceled || !inp.filePaths || !inp.filePaths.length) return { ok: false, canceled: true };
+      if (inp.canceled || !inp.filePaths || !inp.filePaths.length)
+        return { ok: false, canceled: true };
       const raw = fs.readFileSync(inp.filePaths[0], 'utf-8');
       const parsed = JSON.parse(raw); // throws on invalid JSON
       // Reject anything that is not a plain settings object (array/string/number/null)
@@ -1373,7 +1569,8 @@ app.whenReady().then(() => {
   // is ignored unless the user explicitly turns off startup pop-up behavior.
   const cfg = loadConfig();
   const showOnStartup = !(cfg.general && cfg.general.showOnStartup === false);
-  const startHidden = !showOnStartup && (startedHidden || (cfg.general && cfg.general.startMinimized === true));
+  const startHidden =
+    !showOnStartup && (startedHidden || (cfg.general && cfg.general.startMinimized === true));
   createWindow(!startHidden);
   createTray();
   startMonitoring();
@@ -1416,7 +1613,10 @@ app.whenReady().then(() => {
     console.warn('[main] 無法註冊 Ctrl+Alt+Shift+N 全域快捷鍵（可能已被其他程式佔用）。');
   }
 
-  const overlayShortcut = globalShortcut.register('CommandOrControl+Alt+Shift+O', toggleOverlayClickThrough);
+  const overlayShortcut = globalShortcut.register(
+    'CommandOrControl+Alt+Shift+O',
+    toggleOverlayClickThrough,
+  );
   if (!overlayShortcut) {
     console.warn('[main] could not register Ctrl+Alt+Shift+O for overlay click-through toggle.');
   }

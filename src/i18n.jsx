@@ -14,6 +14,7 @@ const resources = {
       cleanup: 'System Cleaner',
       monitor: 'Performance',
       automations: 'Automation',
+      workflows: 'Workflows',
       settings: 'Settings',
       screenshots: 'Screenshot Organizer',
       workspaceTemplates: 'Workspace Templates',
@@ -121,7 +122,8 @@ const resources = {
     },
     settings: {
       languageLabel: 'Interface language',
-      languageDesc: 'Switch the redesigned dashboard and navigation between English and Traditional Chinese.',
+      languageDesc:
+        'Switch the redesigned dashboard and navigation between English and Traditional Chinese.',
       english: 'English',
       chinese: '繁體中文',
     },
@@ -137,6 +139,7 @@ const resources = {
       cleanup: '系統清理',
       monitor: '效能監控',
       automations: '自動化',
+      workflows: '視覺化自動化',
       settings: '設定',
       screenshots: '截圖整理',
       workspaceTemplates: '工作區範本',
@@ -252,13 +255,23 @@ const resources = {
 };
 
 function browserDefault() {
-  return String(navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  return String(navigator.language || '')
+    .toLowerCase()
+    .startsWith('zh')
+    ? 'zh'
+    : 'en';
 }
 
 function lookup(language, key) {
-  return key.split('.').reduce((obj, part) => (obj && obj[part] != null ? obj[part] : null), resources[language])
-    ?? key.split('.').reduce((obj, part) => (obj && obj[part] != null ? obj[part] : null), resources.en)
-    ?? key;
+  return (
+    key
+      .split('.')
+      .reduce((obj, part) => (obj && obj[part] != null ? obj[part] : null), resources[language]) ??
+    key
+      .split('.')
+      .reduce((obj, part) => (obj && obj[part] != null ? obj[part] : null), resources.en) ??
+    key
+  );
 }
 
 export function LocaleProvider({ children }) {
@@ -266,10 +279,13 @@ export function LocaleProvider({ children }) {
 
   useEffect(() => {
     if (!window.api?.getSettings) return;
-    window.api.getSettings().then((result) => {
-      const value = result?.settings?.general?.language;
-      if (value === 'zh' || value === 'en') setLanguageState(value);
-    }).catch(() => {});
+    window.api
+      .getSettings()
+      .then((result) => {
+        const value = result?.settings?.general?.language;
+        if (value === 'zh' || value === 'en') setLanguageState(value);
+      })
+      .catch(() => {});
   }, []);
 
   const setLanguage = useCallback(async (nextLanguage) => {
@@ -291,17 +307,16 @@ export function LocaleProvider({ children }) {
     }
   }, []);
 
-  const value = useMemo(() => ({
-    language,
-    setLanguage,
-    t: (key) => lookup(language, key),
-  }), [language, setLanguage]);
-
-  return (
-    <LocaleContext.Provider value={value}>
-      {children}
-    </LocaleContext.Provider>
+  const value = useMemo(
+    () => ({
+      language,
+      setLanguage,
+      t: (key) => lookup(language, key),
+    }),
+    [language, setLanguage],
   );
+
+  return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }
 
 export function useLocale() {
