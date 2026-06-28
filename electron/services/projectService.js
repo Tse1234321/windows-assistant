@@ -668,7 +668,7 @@ function defaultScanRoots() {
     safeAppPath('pictures', 'Pictures'),
     safeAppPath('videos', 'Videos'),
     safeAppPath('music', 'Music'),
-    path.join(os.homedir(), 'Desktop', 'windows assistant'),
+    safeAppPath('documents', 'Projects'),
   ]);
 }
 

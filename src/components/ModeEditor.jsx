@@ -519,7 +519,7 @@ export default function ModeEditor({ onSaved }) {
                   <div className="editor-row" key={`folder-${index}`}>
                     <input
                       style={pathInputStyle}
-                      placeholder="C:\\Users\\jerem\\Desktop\\..."
+                      placeholder="C:\\Users\\User\\Desktop\\..."
                       value={folder}
                       onChange={(event) => setString('folders', index, event.target.value)}
                       onBlur={(event) => validate(event.target.value)}

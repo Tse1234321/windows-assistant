@@ -22,7 +22,7 @@ export default function Topbar({ title, onOpenPalette, onNavigate }) {
   const { cycleTheme } = useTheme();
   const { language, setLanguage, t } = useLocale();
   const [unread, setUnread] = useState(0);
-  const [profile, setProfile] = useState({ name: 'Jeremy', initials: 'JW' });
+  const [profile, setProfile] = useState({ name: 'User', initials: 'US' });
 
   useEffect(() => {
     if (!window.api) return undefined;

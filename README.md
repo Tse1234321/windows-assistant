@@ -6,8 +6,7 @@
 
 One place to launch projects, organize files, monitor system health, and keep daily development workflows tidy — without replacing your task manager or IDE.
 
-[![CI](https://github.com/jeremywu0420/windows-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/jeremywu0420/windows-assistant/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-2.2.0-2f7bf6.svg)](https://github.com/jeremywu0420/windows-assistant/releases)
+[![Version](https://img.shields.io/badge/version-2.2.0-2f7bf6.svg)](#)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d6.svg)](#requirements)
 [![Electron](https://img.shields.io/badge/Electron-42-47848f.svg)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
@@ -292,4 +291,4 @@ Public documentation and commits should not include personal machine paths, priv
 
 ## 📄 License
 
-[MIT](LICENSE) © [jeremywu0420](https://github.com/jeremywu0420)
+[MIT](LICENSE)

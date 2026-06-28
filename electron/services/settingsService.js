@@ -44,7 +44,7 @@ function defaultProjectHubSettings() {
       safeAppPath('pictures', 'Pictures'),
       safeAppPath('videos', 'Videos'),
       safeAppPath('music', 'Music'),
-      path.join(os.homedir(), 'Desktop', 'windows assistant'),
+      safeAppPath('documents', 'Projects'),
     ]),
     excludeFolders: [...DEFAULT_PROJECT_EXCLUDES],
     maxDepth: 2,

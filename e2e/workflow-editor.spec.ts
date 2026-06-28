@@ -19,7 +19,7 @@ async function mockApi(page: Page) {
       getSettings: async () => ({ ok: true, settings: { general: { language: 'en' } } }),
       getDashboardStats: async () => ({ ok: true, stats: {}, nodes: [] }),
       getSystemStatus: async () => ({ ok: true }),
-      pickPath: async () => ({ ok: true, path: 'C:\\Users\\jerem\\Downloads' }),
+      pickPath: async () => ({ ok: true, path: 'C:\\Users\\User\\Downloads' }),
       workflows: {
         list: async () => ({ ok: true, workflows: [] }),
         save: async () => ({ ok: true }),

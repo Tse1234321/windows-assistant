@@ -2,7 +2,7 @@
   "name": "pc-life-assistant",
   "version": "2.2.0",
   "description": "PC Life Assistant - Windows desktop assistant for file organization, project shortcuts, automations, system monitoring, and Git health checks.",
-  "author": "jeremywu0420",
+  "author": "NEXUS",
   "license": "MIT",
   "main": "electron/main.js",
   "scripts": {
@@ -27,21 +27,13 @@
     "test:e2e": "npm run build && playwright test"
   },
   "build": {
-    "appId": "com.jeremywu0420.pclifeassistant",
+    "appId": "com.nexus.pclifeassistant",
     "productName": "PC Life Assistant",
     "directories": {
       "output": "release-auto",
       "buildResources": "build"
     },
     "artifactName": "PC-Life-Assistant-Setup-${version}.${ext}",
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "jeremywu0420",
-        "repo": "windows-assistant",
-        "releaseType": "release"
-      }
-    ],
     "files": [
       "dist/**/*",
       "electron/**/*",
