@@ -59,6 +59,14 @@ const antivirusApi = {
   },
 };
 
+const setupToolsApi = {
+  getStatus: () => ipcRenderer.invoke('setupTools:getStatus'),
+  installCoreTemp: () => ipcRenderer.invoke('setupTools:installCoreTemp'),
+  openCoreTempDownload: () => ipcRenderer.invoke('setupTools:openCoreTempDownload'),
+  openVirusTotalJoin: () => ipcRenderer.invoke('setupTools:openVirusTotalJoin'),
+  openVirusTotalApiKey: () => ipcRenderer.invoke('setupTools:openVirusTotalApiKey'),
+};
+
 /**
  * Secure bridge between the React renderer and the Node.js/Electron main process.
  * The renderer never touches Node APIs directly — it only calls these methods.
@@ -164,6 +172,7 @@ contextBridge.exposeInMainWorld('api', {
   cleanup: cleanupApi,
   security: securityApi,
   antivirus: antivirusApi,
+  setupTools: setupToolsApi,
 
   // System overlay
   overlay: {
@@ -277,4 +286,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cleanup: cleanupApi,
   security: securityApi,
   antivirus: antivirusApi,
+  setupTools: setupToolsApi,
 });

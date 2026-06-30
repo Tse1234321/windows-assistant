@@ -34,6 +34,7 @@ const updateService = require('./services/updateService');
 const cleanupService = require('./services/cleanupService');
 const securityService = require('./services/securityService');
 const antivirusService = require('./services/antivirusService');
+const onboardingService = require('./services/onboardingService');
 const activityHistoryService = require('./services/activityHistoryService');
 const healthGuardService = require('./services/healthGuardService');
 const toolchainService = require('./services/toolchainService');
@@ -895,6 +896,56 @@ function registerIpc() {
       checks.slice(0, 2).every((check) => check.ok) &&
       projectRoots.some((root) => root.ok);
     return { ok: true, complete, checks, projectRoots, settings };
+  });
+
+  ipcMain.handle('setupTools:getStatus', async () => {
+    const [coreTemp, virusTotal] = await Promise.all([
+      onboardingService.getCoreTempStatus(),
+      antivirusService.getSettings(),
+    ]);
+    return {
+      ok: true,
+      coreTemp,
+      virusTotal: {
+        ok: virusTotal.ok === true,
+        hasApiKey: virusTotal.settings?.hasVirusTotalKey === true,
+        updatedAt: virusTotal.settings?.updatedAt || '',
+      },
+      links: {
+        coreTemp: onboardingService.CORE_TEMP_URL,
+        virusTotalJoin: onboardingService.VIRUSTOTAL_JOIN_URL,
+        virusTotalApiKey: onboardingService.VIRUSTOTAL_API_KEY_URL,
+      },
+    };
+  });
+
+  ipcMain.handle('setupTools:installCoreTemp', async () => onboardingService.installCoreTemp());
+
+  ipcMain.handle('setupTools:openCoreTempDownload', async () => {
+    try {
+      await shell.openExternal(onboardingService.CORE_TEMP_URL);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('setupTools:openVirusTotalJoin', async () => {
+    try {
+      await shell.openExternal(onboardingService.VIRUSTOTAL_JOIN_URL);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('setupTools:openVirusTotalApiKey', async () => {
+    try {
+      await shell.openExternal(onboardingService.VIRUSTOTAL_API_KEY_URL);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   ipcMain.handle('settings:save', async (_event, newSettings) => {

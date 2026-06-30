@@ -2439,6 +2439,54 @@ body {
   word-break: break-all;
 }
 
+.setup-page .setup-tool-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.setup-page .setup-tool-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+}
+
+.setup-page .setup-tool-card.ready {
+  border-color: color-mix(in srgb, var(--ok) 42%, var(--border));
+}
+
+.setup-page .setup-tool-card.warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+}
+
+.setup-page .setup-tool-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.setup-page .setup-tool-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.setup-page .setup-tool-copy p {
+  margin: 0;
+  color: var(--text);
+}
+
+.setup-page .setup-tool-copy span {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  word-break: break-word;
+}
+
 .toggle-row {
   display: inline-flex;
   align-items: center;

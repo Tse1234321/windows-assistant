@@ -30,10 +30,19 @@ interface AntivirusApi {
   onScanResult?: (callback: (result: any) => void) => () => void;
 }
 
+interface SetupToolsApi {
+  getStatus?: () => Promise<any>;
+  installCoreTemp?: () => Promise<any>;
+  openCoreTempDownload?: () => Promise<any>;
+  openVirusTotalJoin?: () => Promise<any>;
+  openVirusTotalApiKey?: () => Promise<any>;
+}
+
 interface AppApi {
   workflows?: WorkflowsApi;
   security?: SecurityApi;
   antivirus?: AntivirusApi;
+  setupTools?: SetupToolsApi;
   openExternal?: (url: string) => Promise<any>;
   pickPath?: (opts: { type: 'file' | 'folder'; title?: string }) => Promise<{ ok?: boolean; path?: string; canceled?: boolean; error?: string }>;
   [key: string]: unknown;
