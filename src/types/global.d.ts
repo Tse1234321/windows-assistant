@@ -1,11 +1,5 @@
 /**
  * Ambient declaration for the secure preload bridge (`window.api`).
- *
- * The bridge is defined in electron/preload.js via contextBridge and exposes a
- * large, evolving surface. Rather than mirror every method here (which would
- * drift), we type the slices that strict TypeScript code consumes and allow the
- * rest through an index signature. Tighten specific namespaces as call sites
- * move to TypeScript.
  */
 
 interface WorkflowsApi {
@@ -16,9 +10,32 @@ interface WorkflowsApi {
   setEnabled?: (id: string, enabled: boolean) => Promise<unknown>;
 }
 
+interface SecurityApi {
+  getStatus?: () => Promise<any>;
+  updateSignatures?: () => Promise<any>;
+}
+
+interface AntivirusApi {
+  startScan?: (payload: { type: string; path?: string }) => Promise<any>;
+  cancelScan?: () => Promise<any>;
+  listThreats?: () => Promise<any>;
+  removeThreat?: (payload?: any) => Promise<any>;
+  restoreThreat?: (payload?: any) => Promise<any>;
+  allowThreat?: (payload?: any) => Promise<any>;
+  checkReputation?: (pathOrHash: string) => Promise<any>;
+  uploadToVirusTotal?: (filePath: string) => Promise<any>;
+  getSettings?: () => Promise<any>;
+  saveSettings?: (settings: any) => Promise<any>;
+  onScanProgress?: (callback: (progress: any) => void) => () => void;
+  onScanResult?: (callback: (result: any) => void) => () => void;
+}
+
 interface AppApi {
   workflows?: WorkflowsApi;
-  // Other namespaces (cleanup, modes, files, …) are still untyped.
+  security?: SecurityApi;
+  antivirus?: AntivirusApi;
+  openExternal?: (url: string) => Promise<any>;
+  pickPath?: (opts: { type: 'file' | 'folder'; title?: string }) => Promise<{ ok?: boolean; path?: string; canceled?: boolean; error?: string }>;
   [key: string]: unknown;
 }
 

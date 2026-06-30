@@ -4,12 +4,13 @@ import EmptyState from './EmptyState.jsx';
 export default function DataTable({
   columns,
   rows,
-  emptyTitle = '尚無資料',
+  emptyIcon,
+  emptyTitle = '沒有資料',
   emptyDescription,
   rowKey,
 }) {
   if (!rows || rows.length === 0) {
-    return <EmptyState title={emptyTitle} description={emptyDescription} />;
+    return <EmptyState icon={emptyIcon} title={emptyTitle} description={emptyDescription} />;
   }
 
   return (

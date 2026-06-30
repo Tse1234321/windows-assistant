@@ -1,0 +1,193 @@
+/* Shared bright tech skin: circuit-board wash, glass panels, and teal edge glow. */
+.ee-tech,
+.tech-surface {
+  --ee-accent: var(--accent, #2563eb);
+  --ee-accent2: #13d6c0;
+  --ee-neon: #2ee6c0;
+  --ee-neon-glow: rgba(46, 230, 192, 0.45);
+  --ee-ink: var(--text, #0f172a);
+  --ee-ink-dim: var(--text-dim, #475569);
+  --ee-ink-faint: var(--muted, #94a3b8);
+  --ee-glow: rgba(37, 99, 235, 0.3);
+  --ee-card: color-mix(in srgb, var(--bg-elevated, #fff) 78%, transparent);
+  position: relative;
+  padding: 6px 2px 28px;
+  overflow-x: clip;
+}
+
+.ee-tech::before,
+.tech-surface::before {
+  content: '';
+  position: absolute;
+  inset: -28px 0 0 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 440px at 12% -12%, rgba(37, 99, 235, 0.14), transparent 60%),
+    radial-gradient(760px 420px at 100% -6%, rgba(46, 230, 192, 0.13), transparent 56%);
+}
+
+.ee-bg {
+  position: absolute;
+  inset: -28px 0 0 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 58%, transparent 92%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 58%, transparent 92%);
+}
+
+.ee-circuit {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.ee-particles {
+  position: absolute;
+  inset: 0;
+}
+
+.ee-particles i {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, var(--ee-neon), rgba(46, 230, 192, 0) 70%);
+  box-shadow: 0 0 6px 1px var(--ee-neon-glow);
+  animation: ee-drift linear infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes ee-drift {
+  0% {
+    transform: translate3d(0, 6px, 0);
+    opacity: 0;
+  }
+  18%,
+  82% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translate3d(0, -34px, 0);
+    opacity: 0;
+  }
+}
+
+.tech-surface > :not(.ee-bg) {
+  position: relative;
+  z-index: 1;
+}
+
+.tech-surface .card,
+.tech-surface .section-panel,
+.security-dashboard.tech-surface .security-card,
+.tech-surface .cleanup-summary-grid .status-card,
+.tech-surface .cleanup-report-grid div,
+.tech-surface .cleanup-confirm-summary div,
+.tech-surface .cleanup-reason-row,
+.security-dashboard.tech-surface .antivirus-panel,
+.tech-surface .threat-row,
+.security-dashboard.tech-surface .recommendation-row,
+.security-dashboard.tech-surface .security-signal {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-elevated, #fff) 88%, transparent),
+    color-mix(in srgb, var(--bg-elevated, #fff) 68%, transparent)
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  border-color: color-mix(in srgb, var(--border, #d8e1ec) 56%, #2ee6c0 18%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 10px 30px -14px rgba(2, 6, 23, 0.22),
+    0 0 0 1px rgba(46, 230, 192, 0.08),
+    0 0 22px -12px var(--ee-neon-glow);
+}
+
+.tech-surface .card:hover,
+.tech-surface .section-panel:hover,
+.security-dashboard.tech-surface .security-card:hover,
+.tech-surface .cleanup-summary-grid .status-card:hover,
+.security-dashboard.tech-surface .antivirus-panel:hover,
+.tech-surface .threat-row:hover,
+.security-dashboard.tech-surface .recommendation-row:hover {
+  transform: translateY(-2px);
+  border-color: rgba(46, 230, 192, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 18px 42px -18px rgba(2, 6, 23, 0.28),
+    0 0 0 1px rgba(46, 230, 192, 0.18),
+    0 0 34px -12px var(--ee-neon-glow);
+}
+
+.tech-surface .page-head,
+.tech-surface .cleanup-hero,
+.security-dashboard.tech-surface .security-hero {
+  position: relative;
+  z-index: 1;
+}
+
+.tech-surface .data-table,
+.tech-surface input,
+.tech-surface select,
+.tech-surface textarea {
+  background-color: color-mix(in srgb, var(--bg-elevated, #fff) 78%, transparent);
+}
+
+.tech-surface .tech-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid rgba(46, 230, 192, 0.22);
+  background: color-mix(in srgb, var(--surface-hover, #eff6ff) 72%, transparent);
+}
+
+.tech-surface .tech-progress-bar {
+  height: 100%;
+  width: var(--progress, 0%);
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--ee-accent), var(--ee-neon));
+  box-shadow: 0 0 18px -5px var(--ee-neon-glow);
+  transition: width 0.18s ease;
+}
+
+.tech-surface .tech-progress-bar.indeterminate {
+  width: 42%;
+  animation: tech-indeterminate 1.15s ease-in-out infinite;
+}
+
+@keyframes tech-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+:root[data-theme='dark'] .tech-surface,
+:root[data-theme='dark'] .ee-tech {
+  --ee-neon-glow: rgba(46, 230, 192, 0.28);
+}
+
+:root[data-theme='dark'] .tech-surface::before,
+:root[data-theme='dark'] .ee-tech::before {
+  opacity: 0.86;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ee-particles i,
+  .tech-surface .tech-progress-bar.indeterminate {
+    animation: none;
+  }
+
+  .tech-surface .card:hover,
+  .tech-surface .section-panel:hover,
+  .security-dashboard.tech-surface .security-card:hover,
+  .tech-surface .cleanup-summary-grid .status-card:hover,
+  .security-dashboard.tech-surface .antivirus-panel:hover,
+  .tech-surface .threat-row:hover,
+  .security-dashboard.tech-surface .recommendation-row:hover {
+    transform: none;
+  }
+}

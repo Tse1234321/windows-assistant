@@ -16,6 +16,7 @@ import Rules from './pages/Rules.jsx';
 import HealthMonitor from './pages/HealthMonitor.jsx';
 import Settings from './pages/Settings.jsx';
 import CleanCenter from './pages/CleanCenter.jsx';
+import SecurityCenter from './pages/SecurityCenter.tsx';
 import SetupWizard from './pages/SetupWizard.jsx';
 import WorkspaceTemplates from './pages/WorkspaceTemplates.jsx';
 import NotificationCenter from './pages/NotificationCenter.jsx';
@@ -91,6 +92,8 @@ function Shell() {
         return <FileOrganizer />;
       case 'cleanup':
         return <CleanCenter />;
+      case 'security':
+        return <SecurityCenter />;
       case 'setup':
         return <SetupWizard onNavigate={navigate} />;
       case 'workspaceTemplates':

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function EmptyState({ icon = 'IN', title = '目前沒有資料', description, action }) {
+export default function EmptyState({ icon = 'i', title = '沒有資料', description, action }) {
   return (
     <div className="empty-state">
       <div className="es-icon">{icon}</div>

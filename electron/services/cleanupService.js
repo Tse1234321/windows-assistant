@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
+const { hashFile, hashFilePartial } = require('./shared/fileHash');
 let electronApp = null;
 let electronShell = null;
 try {
@@ -84,6 +85,10 @@ function cleanupLogsPath() {
 
 function cleanupIgnoreListPath() {
   return userDataPath('cleanupIgnoreList.json');
+}
+
+function cleanupHashCachePath() {
+  return userDataPath('cleanupHashCache.json');
 }
 
 function defaultScanFolders() {
@@ -470,11 +475,19 @@ async function scanDirectoryFiles(
     selectedDefault,
     defaultSelector,
     allowProtectedRoot = false,
+    progressPhase = category || 'Scanning',
+    onProgress,
   } = {},
 ) {
   const items = [];
   const errors = [];
   let skipped = 0;
+  let scanned = 0;
+  const reportProgress = () => {
+    if (typeof onProgress === 'function') {
+      onProgress({ phase: progressPhase, scanned, total: maxFiles });
+    }
+  };
   const rootResolved = normalizeResolved(rootPath);
   const allowedProtectedChild = (targetPath) => {
     const resolved = normalizeResolved(targetPath);
@@ -533,6 +546,8 @@ async function scanDirectoryFiles(
         }
         if (!entry.isFile()) continue;
         const stat = await fs.promises.stat(full);
+        scanned += 1;
+        if (scanned === 1 || scanned % 100 === 0) reportProgress();
         if (!matcher(full, stat)) continue;
         const shouldSelect =
           typeof defaultSelector === 'function' ? !!defaultSelector(full, stat) : selectedDefault;
@@ -553,6 +568,7 @@ async function scanDirectoryFiles(
       }
     }
   }
+  reportProgress();
   return { items, errors, skipped };
 }
 
@@ -628,6 +644,8 @@ async function scanTempFiles(options = {}) {
         action: 'Move to Recycle Bin',
         risk: (_filePath, stat) => (fileAgeDays(stat) >= 7 ? SAFE : REVIEW),
         ignoreItems: options.ignoreItems || [],
+        onProgress: options.onProgress,
+        progressPhase: 'Temp files',
         allowProtectedRoot: !!entry.allowProtectedRoot,
         selectedDefault: false,
         defaultSelector: (filePath, stat) =>
@@ -652,6 +670,8 @@ async function scanBrowserCache(options = {}) {
         action: 'Move to Recycle Bin',
         risk: SAFE,
         ignoreItems: options.ignoreItems || [],
+        onProgress: options.onProgress,
+        progressPhase: 'Browser cache',
       }),
     ),
   );
@@ -667,6 +687,8 @@ async function scanThumbnailCache(options = {}) {
     action: 'Move to Recycle Bin after review',
     risk: REVIEW,
     ignoreItems: options.ignoreItems || [],
+    onProgress: options.onProgress,
+    progressPhase: 'Thumbnail cache',
     selectedDefault: false,
     matcher: (filePath) => /^thumbcache_.*\.db$/i.test(path.basename(filePath)),
   });
@@ -683,6 +705,8 @@ async function scanLogFiles(settings, options = {}) {
         action: 'Move to Recycle Bin',
         risk: REVIEW,
         ignoreItems: options.ignoreItems || [],
+        onProgress: options.onProgress,
+        progressPhase: 'Log and dump files',
         selectedDefault: false,
         matcher: (filePath) => LOG_DUMP_EXTS.has(path.extname(filePath).toLowerCase()),
       }),
@@ -702,6 +726,8 @@ async function scanLargeFiles(settings, options = {}) {
         action: 'Review manually',
         risk: HIGH,
         ignoreItems: options.ignoreItems || [],
+        onProgress: options.onProgress,
+        progressPhase: 'Large files',
         selectedDefault: false,
         matcher: (_filePath, stat) => stat.size >= threshold,
       }),
@@ -728,14 +754,116 @@ function mergeBatches(batches) {
   return { items, errors, skipped };
 }
 
-function hashFile(filePath) {
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash('sha256');
-    const stream = fs.createReadStream(filePath);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('error', reject);
-    stream.on('end', () => resolve(hash.digest('hex')));
-  });
+async function mapWithConcurrency(items, limit, mapper) {
+  const source = Array.isArray(items) ? items : [];
+  const results = new Array(source.length);
+  let cursor = 0;
+  const workerCount = Math.max(1, Math.min(Number(limit || 4), source.length || 1));
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (cursor < source.length) {
+        const index = cursor;
+        cursor += 1;
+        results[index] = await mapper(source[index], index);
+      }
+    }),
+  );
+  return results;
+}
+
+async function readJsonObject(target) {
+  try {
+    const raw = await fs.promises.readFile(target, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+async function loadHashCache() {
+  const parsed = await readJsonObject(cleanupHashCachePath());
+  return parsed && typeof parsed.hashes === 'object' ? parsed.hashes : {};
+}
+
+async function saveHashCache(cache) {
+  const target = cleanupHashCachePath();
+  const entries = Object.entries(cache || {}).slice(-20000);
+  await fs.promises.mkdir(path.dirname(target), { recursive: true });
+  await fs.promises.writeFile(
+    target,
+    JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), hashes: Object.fromEntries(entries) }, null, 2),
+    'utf-8',
+  );
+}
+
+function hashCacheKey(item) {
+  return `${normalizeResolved(item.path)}|${Number(item.size || 0)}|${item.mtime || ''}`;
+}
+
+function statFromItem(item) {
+  const mtime = item.mtime ? new Date(item.mtime) : new Date();
+  return {
+    size: Number(item.size || 0),
+    mtime,
+    mtimeMs: Number.isNaN(mtime.getTime()) ? 0 : mtime.getTime(),
+    ctimeMs: Number.isNaN(mtime.getTime()) ? 0 : mtime.getTime(),
+  };
+}
+
+function itemFromCollectedFile(item, category, type, action, risk, selectedDefault = false, extra = {}) {
+  const stat = statFromItem(item);
+  return {
+    ...itemFromStat({
+      category,
+      type,
+      filePath: item.path,
+      stat,
+      action,
+      risk,
+      selectedDefault,
+      duplicateGroupId: extra.duplicateGroupId || '',
+    }),
+    mtime: item.mtime || '',
+  };
+}
+
+async function collectDefaultScanFiles(settings, options = {}) {
+  const batches = await Promise.all(
+    (settings.defaultScanFolders || []).map((dir) =>
+      scanDirectoryFiles(dir, {
+        recursive: true,
+        category: 'Scan Candidate',
+        type: 'User file',
+        action: 'Review manually',
+        risk: REVIEW,
+        maxFiles: MAX_SCAN_FILES,
+        ignoreItems: options.ignoreItems || [],
+        selectedDefault: false,
+        matcher: (_filePath, stat) => stat.size > 0,
+        onProgress: options.onProgress,
+        progressPhase: 'User files',
+      }),
+    ),
+  );
+  return mergeBatches(batches);
+}
+
+function scanLargeFilesFromCollected(settings, collected) {
+  const threshold = Number(settings.largeFileThresholdMb || 100) * 1024 * 1024;
+  const items = (collected.items || [])
+    .filter((item) => Number(item.size || 0) >= threshold)
+    .map((item) =>
+      itemFromCollectedFile(
+        item,
+        'Large Files',
+        `Over ${settings.largeFileThresholdMb || 100}MB`,
+        'Review manually',
+        HIGH,
+        false,
+      ),
+    );
+  return { items, errors: [], skipped: 0 };
 }
 
 async function collectFilesForDuplicates(settings, options = {}) {
@@ -749,6 +877,8 @@ async function collectFilesForDuplicates(settings, options = {}) {
         risk: REVIEW,
         maxFiles: MAX_DUPLICATE_CANDIDATES,
         ignoreItems: options.ignoreItems || [],
+        onProgress: options.onProgress,
+        progressPhase: 'Duplicate candidates',
         selectedDefault: false,
         matcher: (_filePath, stat) => stat.size > 0,
       }),
@@ -758,29 +888,107 @@ async function collectFilesForDuplicates(settings, options = {}) {
 }
 
 async function scanDuplicateFiles(settings, options = {}) {
-  const collected = await collectFilesForDuplicates(settings, options);
+  const collected = options.collected || (await collectFilesForDuplicates(settings, options));
+  const duplicateItems = (collected.items || [])
+    .slice(0, MAX_DUPLICATE_CANDIDATES)
+    .map((item) =>
+      item.category === 'Duplicate Files'
+        ? item
+        : itemFromCollectedFile(
+            item,
+            'Duplicate Files',
+            'Duplicate candidate',
+            'Review manually',
+            REVIEW,
+            false,
+          ),
+    );
   const bySize = new Map();
-  collected.items.forEach((item) => {
+  duplicateItems.forEach((item) => {
     const list = bySize.get(item.size) || [];
     list.push(item);
     bySize.set(item.size, list);
   });
 
-  const hashGroups = new Map();
   const errors = [...collected.errors];
+  const partialCandidates = [];
   for (const sameSize of bySize.values()) {
-    if (sameSize.length < 2) continue;
-    for (const item of sameSize) {
-      try {
-        const hash = await hashFile(item.path);
-        const key = `${item.size}:${hash}`;
-        const list = hashGroups.get(key) || [];
-        list.push(item);
-        hashGroups.set(key, list);
-      } catch (err) {
-        errors.push({ path: item.path, error: err.message });
+    if (sameSize.length >= 2) partialCandidates.push(...sameSize);
+  }
+
+  const partialGroups = new Map();
+  let hashed = 0;
+  await mapWithConcurrency(partialCandidates, 6, async (item) => {
+    try {
+      const partial = await hashFilePartial(item.path, item.size, 8192);
+      const key = `${item.size}:${partial}`;
+      const list = partialGroups.get(key) || [];
+      list.push(item);
+      partialGroups.set(key, list);
+    } catch (err) {
+      errors.push({ path: item.path, error: err.message });
+    } finally {
+      hashed += 1;
+      if (typeof options.onProgress === 'function' && (hashed === 1 || hashed % 25 === 0)) {
+        options.onProgress({
+          phase: 'Duplicate partial hash',
+          scanned: hashed,
+          total: partialCandidates.length,
+        });
       }
     }
+  });
+
+  const fullCandidates = [];
+  for (const group of partialGroups.values()) {
+    if (group.length >= 2) fullCandidates.push(...group);
+  }
+
+  const cache = await loadHashCache();
+  let cacheDirty = false;
+  let fullHashed = 0;
+  const hashGroups = new Map();
+  await mapWithConcurrency(fullCandidates, 4, async (item) => {
+    const cacheKey = hashCacheKey(item);
+    try {
+      let hash = cache[cacheKey];
+      if (!hash) {
+        hash = await hashFile(item.path);
+        cache[cacheKey] = hash;
+        cacheDirty = true;
+      }
+      const key = `${item.size}:${hash}`;
+      const list = hashGroups.get(key) || [];
+      list.push(item);
+      hashGroups.set(key, list);
+    } catch (err) {
+      errors.push({ path: item.path, error: err.message });
+    } finally {
+      fullHashed += 1;
+      if (typeof options.onProgress === 'function' && (fullHashed === 1 || fullHashed % 10 === 0)) {
+        options.onProgress({
+          phase: 'Duplicate full hash',
+          scanned: fullHashed,
+          total: fullCandidates.length,
+        });
+      }
+    }
+  });
+
+  if (cacheDirty) {
+    try {
+      await saveHashCache(cache);
+    } catch (err) {
+      errors.push({ path: cleanupHashCachePath(), error: err.message });
+    }
+  }
+
+  if (typeof options.onProgress === 'function') {
+    options.onProgress({
+      phase: 'Duplicate full hash',
+      scanned: fullCandidates.length,
+      total: fullCandidates.length,
+    });
   }
 
   const items = [];
@@ -1184,25 +1392,46 @@ async function buildOptimization(
 
 async function scan(options = {}) {
   const startedAt = new Date();
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  onProgress({ phase: 'Preparing scan', scanned: 0, total: 1 });
   const loaded = await loadCleanupSettings();
   const settings = normalizeSettings({ ...(loaded.settings || {}), ...(options.settings || {}) });
   const ignore = await getIgnoreList();
   const ignoreItems = ignore.items || [];
   const errors = [];
-  const batches = [];
+  const tasks = [];
 
-  if (settings.cleanTemp) batches.push(await scanTempFiles({ ignoreItems }));
-  if (settings.cleanBrowserCache) batches.push(await scanBrowserCache({ ignoreItems }));
-  if (settings.cleanThumbnailCache) batches.push(await scanThumbnailCache({ ignoreItems }));
-  if (settings.scanLogDump) batches.push(await scanLogFiles(settings, { ignoreItems }));
+  if (settings.cleanTemp) tasks.push(scanTempFiles({ ignoreItems, onProgress }));
+  if (settings.cleanBrowserCache) tasks.push(scanBrowserCache({ ignoreItems, onProgress }));
+  if (settings.cleanThumbnailCache) tasks.push(scanThumbnailCache({ ignoreItems, onProgress }));
+  if (settings.scanLogDump) tasks.push(scanLogFiles(settings, { ignoreItems, onProgress }));
+
+  const shouldCollectUserFiles = settings.scanLargeFiles || settings.scanDuplicateFiles;
+  const userFilesPromise = shouldCollectUserFiles
+    ? collectDefaultScanFiles(settings, { ignoreItems, onProgress })
+    : Promise.resolve({ items: [], errors: [], skipped: 0 });
+
+  const [baseBatches, collectedUserFiles, recycleBin, startup, logs] = await Promise.all([
+    Promise.all(tasks),
+    userFilesPromise,
+    getRecycleBinInfo(),
+    scanStartupItems(settings),
+    readCleanupLogs(),
+  ]);
+
+  const batches = [...baseBatches];
   let large = { items: [], errors: [], skipped: 0 };
   if (settings.scanLargeFiles) {
-    large = await scanLargeFiles(settings, { ignoreItems });
+    large = scanLargeFilesFromCollected(settings, collectedUserFiles);
     batches.push(large);
   }
   let duplicates = { items: [], errors: [], groups: [], skipped: 0 };
   if (settings.scanDuplicateFiles) {
-    duplicates = await scanDuplicateFiles(settings, { ignoreItems });
+    duplicates = await scanDuplicateFiles(settings, {
+      ignoreItems,
+      onProgress,
+      collected: collectedUserFiles,
+    });
     batches.push(duplicates);
   }
 
@@ -1210,9 +1439,7 @@ async function scan(options = {}) {
   errors.push(...merged.errors);
   let items = merged.items;
   if (!settings.showHighRiskFiles) items = items.filter((item) => item.risk !== HIGH);
-  const recycleBin = await getRecycleBinInfo();
-  const startup = await scanStartupItems(settings);
-  const logs = await readCleanupLogs();
+  onProgress({ phase: 'Building summary', scanned: 1, total: 1 });
   const optimization = await buildOptimization(
     items,
     duplicates.groups || [],
@@ -1223,6 +1450,7 @@ async function scan(options = {}) {
   );
   const categories = summarizeCategories(items, settings, recycleBin, startup);
   const finishedAt = new Date();
+  onProgress({ phase: 'Complete', scanned: 1, total: 1 });
 
   await writeCleanupLog({
     action: 'scan',
@@ -1536,6 +1764,7 @@ module.exports = {
   cleanupSettingsPath,
   cleanupLogsPath,
   cleanupIgnoreListPath,
+  cleanupHashCachePath,
   defaultSettings,
   normalizeSettings,
   loadCleanupSettings,
@@ -1564,4 +1793,7 @@ module.exports = {
   clearLogs,
   runAutomationAction,
   scan,
+  hashFile,
+  hashFilePartial,
+  mapWithConcurrency,
 };

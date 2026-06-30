@@ -24,6 +24,39 @@ const cleanupApi = {
   emptyRecycleBin: () => ipcRenderer.invoke('cleanup:emptyRecycleBin'),
   getStartupItems: () => ipcRenderer.invoke('cleanup:startupItems'),
   openPath: (targetPath) => ipcRenderer.invoke('cleanup:openPath', targetPath),
+  onScanProgress: (callback) => {
+    const handler = (_event, progress) => callback(progress);
+    ipcRenderer.on('cleanup:scanProgress', handler);
+    return () => ipcRenderer.removeListener('cleanup:scanProgress', handler);
+  },
+};
+
+const securityApi = {
+  getStatus: () => ipcRenderer.invoke('security:getStatus'),
+  updateSignatures: () => ipcRenderer.invoke('security:updateSignatures'),
+};
+
+const antivirusApi = {
+  startScan: (payload) => ipcRenderer.invoke('antivirus:startScan', payload),
+  cancelScan: () => ipcRenderer.invoke('antivirus:cancelScan'),
+  listThreats: () => ipcRenderer.invoke('antivirus:listThreats'),
+  removeThreat: (payload) => ipcRenderer.invoke('antivirus:removeThreat', payload),
+  restoreThreat: (payload) => ipcRenderer.invoke('antivirus:restoreThreat', payload),
+  allowThreat: (payload) => ipcRenderer.invoke('antivirus:allowThreat', payload),
+  checkReputation: (pathOrHash) => ipcRenderer.invoke('antivirus:checkReputation', pathOrHash),
+  uploadToVirusTotal: (filePath) => ipcRenderer.invoke('antivirus:uploadToVirusTotal', filePath),
+  getSettings: () => ipcRenderer.invoke('antivirus:getSettings'),
+  saveSettings: (settings) => ipcRenderer.invoke('antivirus:saveSettings', settings),
+  onScanProgress: (callback) => {
+    const handler = (_event, progress) => callback(progress);
+    ipcRenderer.on('antivirus:scanProgress', handler);
+    return () => ipcRenderer.removeListener('antivirus:scanProgress', handler);
+  },
+  onScanResult: (callback) => {
+    const handler = (_event, result) => callback(result);
+    ipcRenderer.on('antivirus:scanResult', handler);
+    return () => ipcRenderer.removeListener('antivirus:scanResult', handler);
+  },
 };
 
 /**
@@ -129,6 +162,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Clean Center
   cleanup: cleanupApi,
+  security: securityApi,
+  antivirus: antivirusApi,
 
   // System overlay
   overlay: {
@@ -240,4 +275,6 @@ contextBridge.exposeInMainWorld('api', {
 
 contextBridge.exposeInMainWorld('electronAPI', {
   cleanup: cleanupApi,
+  security: securityApi,
+  antivirus: antivirusApi,
 });

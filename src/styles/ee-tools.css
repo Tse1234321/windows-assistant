@@ -1,3 +1,5 @@
+@import './tech-skin.css';
+
 /* Scoped "bright tech" skin for the EE Tools page only.
    Light circuit-board background + teal neon glow + drifting particles.
    Everything is namespaced under .ee-tech so no other page is affected. */

@@ -10,6 +10,7 @@ export const NAV_SECTIONS = [
       { key: 'files', label: 'nav.files', icon: 'folder' },
       { key: 'projects', label: 'nav.projects', icon: 'nodes' },
       { key: 'cleanup', label: 'nav.cleanup', icon: 'spark' },
+      { key: 'security', label: 'nav.security', icon: 'shield' },
       { key: 'monitor', label: 'nav.monitor', icon: 'pulse' },
       { key: 'automations', label: 'nav.automations', icon: 'bolt' },
       { key: 'workflows', label: 'nav.workflows', icon: 'nodes' },

@@ -11,6 +11,7 @@ dist/
 out/
 release/
 release-auto/
+release-auto-*/
 win-unpacked/
 .git_corrupt_backup_*/
 
@@ -42,3 +43,12 @@ config/runtime-state.json
 # Real settings file — written by the app in dev and contains personal paths.
 # A sanitized template is committed as config/user-settings.example.json instead.
 config/user-settings.json
+
+# Local security settings and reputation/hash caches. These may contain secrets
+# or machine-specific scan metadata and must never be committed.
+securitySettings.json
+securityReputationCache.json
+cleanupHashCache.json
+**/securitySettings.json
+**/securityReputationCache.json
+**/cleanupHashCache.json

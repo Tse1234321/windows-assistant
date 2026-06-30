@@ -32,6 +32,8 @@ const automationService = require('./services/automationService');
 const workflowService = require('./services/workflowService');
 const updateService = require('./services/updateService');
 const cleanupService = require('./services/cleanupService');
+const securityService = require('./services/securityService');
+const antivirusService = require('./services/antivirusService');
 const activityHistoryService = require('./services/activityHistoryService');
 const healthGuardService = require('./services/healthGuardService');
 const toolchainService = require('./services/toolchainService');
@@ -1176,7 +1178,16 @@ function registerIpc() {
   );
   ipcMain.handle('cleanup:status', async () => cleanupService.getStatus());
   ipcMain.handle('cleanup:getSummary', async () => cleanupService.getStatus());
-  ipcMain.handle('cleanup:scan', async (_event, payload = {}) => cleanupService.scan(payload));
+  ipcMain.handle('cleanup:scan', async (event, payload = {}) =>
+    cleanupService.scan({
+      ...payload,
+      onProgress: (progress) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('cleanup:scanProgress', progress);
+        }
+      },
+    }),
+  );
   ipcMain.handle('cleanup:cleanSelected', async (_event, payload = {}) => {
     const items = Array.isArray(payload) ? payload : payload.items;
     return cleanupService.cleanSelectedFiles(items || [], payload.settings || {});
@@ -1215,6 +1226,36 @@ function registerIpc() {
       return { ok: false, error: err.message };
     }
   });
+
+  // --- Security Center ---
+  ipcMain.handle('security:getStatus', async () => securityService.getStatus());
+  ipcMain.handle('security:updateSignatures', async () => securityService.updateSignatures());
+
+  // --- Antivirus / Defender actions ---
+  ipcMain.handle('antivirus:startScan', async (event, payload = {}) =>
+    antivirusService.startScan(payload, event.sender),
+  );
+  ipcMain.handle('antivirus:cancelScan', async () => antivirusService.cancelScan());
+  ipcMain.handle('antivirus:listThreats', async () => antivirusService.listThreats());
+  ipcMain.handle('antivirus:removeThreat', async (_event, payload = {}) =>
+    antivirusService.removeThreat(payload),
+  );
+  ipcMain.handle('antivirus:restoreThreat', async (_event, payload = {}) =>
+    antivirusService.restoreThreat(payload),
+  );
+  ipcMain.handle('antivirus:allowThreat', async (_event, payload = {}) =>
+    antivirusService.allowThreat(payload),
+  );
+  ipcMain.handle('antivirus:checkReputation', async (_event, pathOrHash) =>
+    antivirusService.checkReputation(pathOrHash),
+  );
+  ipcMain.handle('antivirus:uploadToVirusTotal', async (_event, filePath) =>
+    antivirusService.uploadToVirusTotal(filePath),
+  );
+  ipcMain.handle('antivirus:getSettings', async () => antivirusService.getSettings());
+  ipcMain.handle('antivirus:saveSettings', async (_event, settings = {}) =>
+    antivirusService.saveSettings(settings),
+  );
 
   // --- Screenshot Organizer ---
   ipcMain.handle('screenshots:getSettings', async () => {

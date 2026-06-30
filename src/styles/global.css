@@ -1,4 +1,5 @@
 @import './tokens.css';
+@import './tech-skin.css';
 
 * {
   box-sizing: border-box;
@@ -1964,6 +1965,407 @@ body {
   font-size: 12px;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.cleanup-hero,
+.security-dashboard .security-hero {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto minmax(260px, 0.9fr);
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.cleanup-capacity,
+.scan-progress-card,
+.security-dashboard .security-hero,
+.security-dashboard .antivirus-panel,
+.security-dashboard .vt-settings,
+.security-dashboard .scan-live,
+.security-dashboard .security-empty-state {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  padding: 16px;
+}
+
+.cleanup-capacity span,
+.cleanup-capacity em,
+.cleanup-risk-strip span,
+.scan-progress-card span,
+.security-dashboard .security-hero-copy span,
+.security-dashboard .vt-settings span,
+.security-dashboard .security-empty-state span {
+  display: block;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.cleanup-capacity strong {
+  display: block;
+  margin: 4px 0;
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1;
+}
+
+.cleanup-disk-ring,
+.security-dashboard .security-score-ring {
+  width: 126px;
+  height: 126px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at center, var(--bg-elevated) 58%, transparent 59%),
+    conic-gradient(var(--accent) var(--disk-used, 0%), var(--border) 0);
+}
+
+.cleanup-disk-ring strong,
+.security-dashboard .security-score-ring strong {
+  display: block;
+  font-size: 30px;
+  line-height: 1;
+  text-align: center;
+}
+
+.cleanup-disk-ring span,
+.security-dashboard .security-score-ring span {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: center;
+}
+
+.cleanup-risk-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cleanup-risk-strip div {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  background: var(--bg-elevated);
+}
+
+.cleanup-risk-strip strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 24px;
+}
+
+.cleanup-risk-strip .ok strong {
+  color: var(--ok);
+}
+
+.cleanup-risk-strip .warn strong {
+  color: var(--warn);
+}
+
+.cleanup-risk-strip .danger strong {
+  color: var(--danger);
+}
+
+.scan-progress-card {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.scan-progress-card > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cleanup-security-actions,
+.security-dashboard .threat-actions,
+.security-dashboard .scan-button-row,
+.security-dashboard .custom-scan-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.cleanup-security-actions span {
+  flex-basis: 100%;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.security-dashboard .security-hero {
+  grid-template-columns: auto minmax(0, 1fr) minmax(300px, 0.85fr);
+}
+
+.security-dashboard .security-score-ring {
+  background:
+    radial-gradient(circle at center, var(--bg-elevated) 58%, transparent 59%),
+    conic-gradient(var(--score-color, var(--accent)) var(--score, 0deg), var(--border) 0);
+}
+
+.security-dashboard .security-score-ring.ok {
+  --score-color: #16a34a;
+}
+
+.security-dashboard .security-score-ring.warn {
+  --score-color: #f59e0b;
+}
+
+.security-dashboard .security-score-ring.danger {
+  --score-color: #ef4444;
+}
+
+.security-dashboard .security-hero-copy h2 {
+  margin: 4px 0 6px;
+  font-size: 24px;
+}
+
+.security-dashboard .security-hero-copy p {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.security-dashboard .security-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.security-dashboard .security-summary-strip div {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+  padding: 10px 12px;
+}
+
+.security-dashboard .security-summary-strip span {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.security-dashboard .security-summary-strip strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 24px;
+}
+
+.security-dashboard .security-summary-strip .critical strong,
+.security-dashboard .security-card.warning .deduction.active {
+  color: #ef4444;
+}
+
+.security-dashboard .security-summary-strip .warning strong {
+  color: #f59e0b;
+}
+
+.security-dashboard .security-summary-strip .unknown strong,
+.security-dashboard .security-card.unavailable .deduction.active {
+  color: #d946ef;
+}
+
+.security-dashboard .security-summary-strip .normal strong {
+  color: #16a34a;
+}
+
+.security-dashboard .security-signal-section {
+  margin-bottom: 16px;
+}
+
+.security-dashboard .security-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.security-dashboard .security-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  padding: 16px;
+  cursor: pointer;
+  transition:
+    transform var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+
+.security-dashboard .security-card.normal {
+  border-color: color-mix(in srgb, #16a34a 42%, var(--border));
+}
+
+.security-dashboard .security-card.warning {
+  border-color: color-mix(in srgb, #ef4444 52%, var(--border));
+  box-shadow: 0 0 28px -18px rgba(239, 68, 68, 0.75);
+}
+
+.security-dashboard .security-card.unavailable {
+  border-color: color-mix(in srgb, #d946ef 52%, var(--border));
+  box-shadow: 0 0 28px -18px rgba(217, 70, 239, 0.8);
+}
+
+.security-dashboard .security-card.expanded {
+  border-color: rgba(46, 230, 192, 0.55);
+}
+
+.security-dashboard .security-card-head,
+.security-dashboard .recommendation-row,
+.security-dashboard .vt-settings {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.security-dashboard .security-card-kicker {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.security-dashboard .security-card h3,
+.security-dashboard .quarantine-list h3 {
+  margin: 4px 0 0;
+  font-size: 15px;
+}
+
+.security-dashboard .security-card-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.security-dashboard .security-card-main strong {
+  font-size: 23px;
+}
+
+.security-dashboard .deduction {
+  color: var(--text-dim);
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.security-dashboard .security-card p {
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.security-dashboard .security-card-details {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.security-dashboard .security-card-details span {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.security-dashboard .security-card-details p {
+  margin: 4px 0 0;
+}
+
+.security-dashboard .security-card-action {
+  margin-top: 2px;
+}
+
+.security-dashboard .recommendation-list,
+.security-dashboard .quarantine-list {
+  display: grid;
+  gap: 10px;
+}
+
+.security-dashboard .recommendation-row {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.security-dashboard .recommendation-row.warning {
+  border-color: color-mix(in srgb, #ef4444 45%, var(--border));
+}
+
+.security-dashboard .recommendation-row.unavailable {
+  border-color: color-mix(in srgb, #d946ef 45%, var(--border));
+}
+
+.security-dashboard .recommendation-row span,
+.security-dashboard .quarantine-details code,
+.security-dashboard .scan-live code {
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.security-dashboard .antivirus-panel,
+.security-dashboard .scan-live {
+  display: grid;
+  gap: 12px;
+}
+
+.security-dashboard .custom-scan-row input,
+.security-dashboard .vt-settings input {
+  min-width: min(100%, 340px);
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  padding: 10px 12px;
+}
+
+.security-dashboard .vt-settings {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.security-dashboard .quarantine-list {
+  margin-top: 14px;
+}
+
+.security-dashboard .quarantine-details {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.security-dashboard .quarantine-details code {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+}
+
+.security-dashboard .security-empty-state {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 900px) {
+  .cleanup-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .cleanup-disk-ring {
+    justify-self: start;
+  }
 }
 
 .setup-steps {

@@ -5,6 +5,7 @@ import InlineAlert from '../components/InlineAlert.jsx';
 import PageHeader from '../components/PageHeader.jsx';
 import SectionPanel from '../components/SectionPanel.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import TechBackground from '../components/TechBackground.jsx';
 import { useToast } from '../components/Toast.jsx';
 
 const RISK_SAFE = '安全清理';
@@ -131,20 +132,31 @@ export default function CleanCenter() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [activeInfo, setActiveInfo] = useState(null);
   const [report, setReport] = useState(null);
+  const [scanProgress, setScanProgress] = useState(null);
+  const [diskUsage, setDiskUsage] = useState(null);
+  const [fileSecurity, setFileSecurity] = useState({});
 
   const load = useCallback(async () => {
     if (!window.api?.cleanup) return;
     const logsResult = await window.api.cleanup.getLogs().catch(() => null);
     if (logsResult?.ok) setLogs(logsResult.logs || []);
+    const diskResult = await window.api.cleanup.getDiskUsage?.('C:\\').catch(() => null);
+    if (diskResult?.ok) setDiskUsage(diskResult);
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!window.api?.cleanup?.onScanProgress) return undefined;
+    return window.api.cleanup.onScanProgress((progress) => setScanProgress(progress));
+  }, []);
+
   const runScan = async () => {
     setBusy(true);
     setReport(null);
+    setScanProgress({ phase: 'Preparing scan', scanned: 0, total: 1 });
     const result = await window.api.cleanup.scan({});
     setBusy(false);
     if (!result.ok) {
@@ -157,6 +169,51 @@ export default function CleanCenter() {
     );
     toast(`掃描完成：找到 ${result.summary.totalCount} 個項目`, 'ok');
     load();
+  };
+
+  const scanFileNow = async (row) => {
+    if (!window.api?.antivirus?.startScan) {
+      toast('掃毒服務尚未啟用', 'warn');
+      return;
+    }
+    setFileSecurity((prev) => ({
+      ...prev,
+      [row.id]: { ...(prev[row.id] || {}), scan: '掃描中' },
+    }));
+    const result = await window.api.antivirus.startScan({ type: 'custom', path: row.path });
+    setFileSecurity((prev) => ({
+      ...prev,
+      [row.id]: {
+        ...(prev[row.id] || {}),
+        scan: result?.ok
+          ? result.threats > 0
+            ? `發現 ${result.threats} 個威脅`
+            : '未發現威脅'
+          : result?.error || '掃描失敗',
+      },
+    }));
+  };
+
+  const checkReputation = async (row) => {
+    if (!window.api?.antivirus?.checkReputation) {
+      toast('VirusTotal 查詢尚未啟用', 'warn');
+      return;
+    }
+    setFileSecurity((prev) => ({
+      ...prev,
+      [row.id]: { ...(prev[row.id] || {}), reputation: '查詢中' },
+    }));
+    const result = await window.api.antivirus.checkReputation(row.path);
+    const stats = result?.stats || {};
+    setFileSecurity((prev) => ({
+      ...prev,
+      [row.id]: {
+        ...(prev[row.id] || {}),
+        reputation: result?.ok
+          ? `VT 惡意 ${stats.malicious || 0} / 可疑 ${stats.suspicious || 0}`
+          : result?.error || 'VT 未啟用',
+      },
+    }));
   };
 
   const items = useMemo(() => scanResult?.items || [], [scanResult?.items]);
@@ -221,9 +278,17 @@ export default function CleanCenter() {
   const summary = scanResult?.summary || {};
   const rows = categoryRows(scanResult?.categories);
   const reportReasons = report?.report?.failureReasons || [];
+  const safeCount = items.filter((item) => normalizeRisk(item.risk) === RISK_SAFE).length;
+  const reviewCount = items.filter((item) => normalizeRisk(item.risk) === RISK_REVIEW).length;
+  const dangerCount = Math.max(0, items.length - safeCount - reviewCount);
+  const progressPercent =
+    scanProgress?.total > 0
+      ? Math.max(3, Math.min(100, Math.round((scanProgress.scanned / scanProgress.total) * 100)))
+      : 0;
 
   return (
-    <div className="cleanup-page">
+    <div className="cleanup-page tech-surface">
+      <TechBackground />
       <PageHeader
         eyebrow="ORGANIZE"
         title="Clean Center"
@@ -245,6 +310,50 @@ export default function CleanCenter() {
         Driver / Windows Update 相關暫存、以及 Downloads / Desktop / Documents
         內的檔案不會自動清理。
       </InlineAlert>
+
+      <div className="cleanup-hero">
+        <div className="cleanup-capacity">
+          <span>可釋放容量</span>
+          <strong>{formatBytes(summary.totalSize)}</strong>
+          <em>{summary.totalCount || 0} 個可檢查項目</em>
+        </div>
+        <div
+          className="cleanup-disk-ring"
+          style={{ '--disk-used': `${diskUsage?.usedPercent || 0}%` }}
+          aria-label="Disk usage"
+        >
+          <strong>{diskUsage?.usedPercent ?? '--'}%</strong>
+          <span>C: 使用率</span>
+        </div>
+        <div className="cleanup-risk-strip">
+          <div className="ok">
+            <span>安全可清</span>
+            <strong>{safeCount}</strong>
+          </div>
+          <div className="warn">
+            <span>需確認</span>
+            <strong>{reviewCount}</strong>
+          </div>
+          <div className="danger">
+            <span>高風險</span>
+            <strong>{dangerCount}</strong>
+          </div>
+        </div>
+      </div>
+
+      {busy || scanProgress ? (
+        <div className="scan-progress-card">
+          <div>
+            <strong>{scanProgress?.phase || 'Scanning'}</strong>
+            <span>
+              {scanProgress?.scanned || 0} / {scanProgress?.total || '--'}
+            </span>
+          </div>
+          <div className="tech-progress-track">
+            <div className="tech-progress-bar" style={{ '--progress': `${progressPercent}%` }} />
+          </div>
+        </div>
+      ) : null}
 
       <div className="metric-grid cleanup-summary-grid">
         <div className="card status-card">
@@ -365,6 +474,24 @@ export default function CleanCenter() {
                 <button className="link-button" onClick={() => openPath(row.path)}>
                   {row.path}
                 </button>
+              ),
+            },
+            {
+              key: 'security',
+              label: '安全',
+              render: (row) => (
+                <div className="cleanup-security-actions">
+                  <Button size="sm" variant="ghost" onClick={() => scanFileNow(row)}>
+                    立即掃毒
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => checkReputation(row)}>
+                    VT
+                  </Button>
+                  {fileSecurity[row.id]?.scan ? <span>{fileSecurity[row.id].scan}</span> : null}
+                  {fileSecurity[row.id]?.reputation ? (
+                    <span>{fileSecurity[row.id].reputation}</span>
+                  ) : null}
+                </div>
               ),
             },
             {
