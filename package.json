@@ -56,7 +56,8 @@
         }
       ],
       "icon": "build/icon.png",
-      "signExecutable": false
+      "signAndEditExecutable": true,
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
