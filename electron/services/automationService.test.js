@@ -1,7 +1,10 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import automationService from './automationService.js';
 
-const { matches, scheduleDueFor, markScheduleFired } = automationService;
+const { handleNewFile, matches, scheduleDueFor, markScheduleFired } = automationService;
 
 describe('matches (the predicate the workflow engine relies on)', () => {
   it('extension: normalizes a missing dot and is case-insensitive', () => {
@@ -68,5 +71,51 @@ describe('scheduleDueFor (scheduled-workflow timing + dedupe)', () => {
     expect(
       scheduleDueFor(`${key}-b`, { scheduleMode: 'weekly', time: '09:00', dayOfWeek: 1 }, tuesday),
     ).toBe(false);
+  });
+});
+
+describe('download organizer safety', () => {
+  it('keeps a newly downloaded PDF in place when review-first organizing is enabled', async () => {
+    const downloads = await fs.mkdtemp(path.join(os.tmpdir(), 'pla-downloads-'));
+    const filePath = path.join(downloads, 'statement.pdf');
+    await fs.writeFile(filePath, 'pdf');
+
+    try {
+      const fired = await handleNewFile(
+        {
+          general: {
+            downloadsPath: downloads,
+            askBeforeOrganizing: true,
+          },
+          automations: [
+            {
+              name: 'Downloads auto organize',
+              enabled: true,
+              condition: { type: 'newFileInFolder', folder: downloads },
+              action: { type: 'organizeFileByType' },
+            },
+          ],
+        },
+        {
+          folder: downloads,
+          file: 'statement.pdf',
+          path: filePath,
+          ext: '.pdf',
+          size: 3,
+        },
+      );
+
+      expect(fired).toHaveLength(1);
+      expect(fired[0]).toMatchObject({
+        rule: 'Downloads auto organize',
+        ok: true,
+        held: true,
+        moved: 0,
+        skipped: 1,
+      });
+      await expect(fs.stat(filePath)).resolves.toBeTruthy();
+    } finally {
+      await fs.rm(downloads, { recursive: true, force: true });
+    }
   });
 });

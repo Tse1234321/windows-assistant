@@ -12,6 +12,7 @@ const { classifyFile } = require('./fileClassifier');
 
 const scheduledState = new Map();
 let scheduleTimer = null;
+const DOWNLOAD_FILE_MOVE_ACTIONS = new Set(['move', 'organizeFileByType']);
 
 function list(config) {
   return config && Array.isArray(config.automations) ? config.automations : [];
@@ -220,6 +221,40 @@ function normalizeArgs(args, info) {
   return text ? [text] : [];
 }
 
+function samePath(a, b) {
+  try {
+    return path.resolve(a || '').toLowerCase() === path.resolve(b || '').toLowerCase();
+  } catch (_) {
+    return false;
+  }
+}
+
+function holdDownloadFileMove(action = {}, info = {}, config = {}) {
+  if (!DOWNLOAD_FILE_MOVE_ACTIONS.has(action.type)) return null;
+  if (!info.path || info.manual || info.scheduled) return null;
+  const general = config.general || {};
+  if (general.askBeforeOrganizing === false) return null;
+  if (!general.downloadsPath || !samePath(info.folder, general.downloadsPath)) return null;
+
+  if (!info.__downloadMoveHoldNotified) {
+    notificationService.notify(
+      'Downloads organizer',
+      `${info.file || 'New file'} stayed in Downloads. Review it before organizing.`,
+      { level: 'info', source: 'automation', action: 'files' },
+    );
+    info.__downloadMoveHoldNotified = true;
+  }
+
+  return {
+    ok: true,
+    held: true,
+    moved: 0,
+    copied: 0,
+    skipped: 1,
+    message: 'Download kept in place until review.',
+  };
+}
+
 function runProgram(action, info) {
   const command = substituteTokens(String(action.command || '').trim(), info);
   if (!command) return Promise.resolve({ ok: false, error: 'Command is not set.' });
@@ -278,6 +313,9 @@ function runProgram(action, info) {
 
 async function runAction(action, info, config = {}) {
   try {
+    const held = holdDownloadFileMove(action || {}, info || {}, config);
+    if (held) return held;
+
     switch (action && action.type) {
       case 'move': {
         if (!action.target) return { ok: false, error: 'Target folder is not set.' };
