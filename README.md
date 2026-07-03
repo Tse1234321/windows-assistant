@@ -7,7 +7,7 @@
 One place to launch projects, organize files, monitor system health, and keep daily development workflows tidy — without replacing your task manager or IDE.
 
 [![Clone](https://img.shields.io/badge/clone%20and%20build-ready-14b8a6.svg)](#install-on-your-pc)
-[![Version](https://img.shields.io/badge/version-2.2.0-2f7bf6.svg)](#)
+[![Version](https://img.shields.io/badge/version-2.4.0-2f7bf6.svg)](#)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d6.svg)](#requirements)
 [![Electron](https://img.shields.io/badge/Electron-42-47848f.svg)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
@@ -26,7 +26,7 @@ One place to launch projects, organize files, monitor system health, and keep da
 
 ## ✨ Overview
 
-PC Life Assistant combines a daily workspace dashboard, project launcher, file organizer, system health monitor, automation rules, safe cleanup tools, and a gaming-style performance overlay into a single Electron app. The interface is branded **NEXUS** in-app and is fully **bilingual (English / 繁體中文)** with a language switch in Settings.
+PC Life Assistant combines a daily workspace dashboard, project launcher, file organizer, system health monitor, automation rules, safe cleanup tools, a read-only Windows Security overview, a local PDF toolbox, and a gaming-style performance overlay into a single Electron app. The interface is branded **NEXUS** in-app and is fully **bilingual (English / 繁體中文)** with a language switch in Settings.
 
 The goal is not to be another todo list — it's to **remove the small repeated steps** around everyday computer work: opening the same folders and tools, sorting the Downloads folder, keeping an eye on disk space and temperatures, and remembering which projects still need a Git commit.
 
@@ -48,6 +48,8 @@ The goal is not to be another todo list — it's to **remove the small repeated 
 | **Work Modes**           | Opens apps, folders, URLs, and shell commands as one repeatable workspace — for coding, study, design, reports, or hardware work.                                                                                                                                                  |
 | **Workspace Templates**  | Generates starter folders for Web, Python, JS/TS, C/C++, Java, Go, Rust, Arduino, FPGA (Verilog/VHDL), STM32, MATLAB, KiCad, and custom multi-language combos.                                                                                                                     |
 | **Clean Center**         | Reviews temp files, caches, large files, duplicates, downloads, and recycle bin — with conservative safety rules and confirm-before-action.                                                                                                                                        |
+| **Security Center**      | A read-only mirror of Windows Security status — Microsoft Defender, firewall profiles, TPM, BitLocker, and more — gathered with non-elevated PowerShell queries. It never changes security settings; it only reports them.                                                          |
+| **PDF Tools**            | A full PDF toolbox (merge, split, rotate, compress, convert, and more) powered by an embedded local [Stirling-PDF](https://github.com/Stirling-Tools/Stirling-PDF) instance. The Java runtime and app are downloaded on demand on first use, and everything runs locally.          |
 | **Downloads Organizer**  | Scans Downloads, previews planned moves, classifies by rules, never overwrites, and keeps a restore option.                                                                                                                                                                        |
 | **Screenshot Organizer** | Groups screenshots by date and category using configurable keyword rules.                                                                                                                                                                                                          |
 | **System Monitor**       | Live CPU / RAM / disk / uptime, CPU & GPU temperatures, trend sparklines, and a tunable Health Guard.                                                                                                                                                                              |
@@ -59,6 +61,7 @@ The goal is not to be another todo list — it's to **remove the small repeated 
 | **Visual Automation**    | A node-based editor (trigger → condition → action) for building automation workflows on a drag-and-drop canvas. Reuses the same safe, review-first actions; file-mutating steps are flagged and confirmed, and a dry-run previews exactly what a workflow would do before it runs. |
 | **Command Palette**      | Global quick actions (Ctrl+Shift+P / Ctrl+K) for navigation, project actions, health checks, and cleanup.                                                                                                                                                                          |
 | **System Overlay**       | Optional always-on-top performance HUD (RTSS / Afterburner style) showing FPS and 1% low, CPU usage / power / temperature / clock, GPU usage / temperature / VRAM, and RAM — toggleable from the tray, with click-through.                                                         |
+| **Update Center**        | Shows the current app version, checks for updates, and installs a downloaded update on restart.                                                                                                                                                                                    |
 | **Setup Wizard**         | Guided first-run configuration for folders, screenshots, VS Code, project roots, and monitoring.                                                                                                                                                                                   |
 
 ---
@@ -181,6 +184,8 @@ pc-life-assistant/
 | File Organizer      | Preview and organize downloads or a selected folder.                                                                  |
 | Screenshots         | Scan and organize screenshot images by date and category.                                                             |
 | Clean Center        | Review cleanup candidates and safe maintenance suggestions.                                                           |
+| Security Center     | Read-only Windows Security overview: Defender, firewall, TPM, BitLocker, and related status.                          |
+| PDF Tools           | Merge, split, convert, and edit PDFs locally via an embedded Stirling-PDF instance.                                   |
 | Automations         | Configure scheduled reminders and safe helper actions.                                                                |
 | System Monitor      | Inspect live hardware and resource status.                                                                            |
 | Health Monitor      | Review health checks, recommendations, and guard settings.                                                            |
@@ -189,6 +194,7 @@ pc-life-assistant/
 | EE Quick Tools      | Electrical-engineering calculators (Ohm's law, dividers, bidirectional resistor colour code, RC/LC, base conversion). |
 | Embedded Lab        | Compile/simulate Arduino/Verilog/VHDL/Octave/CMake projects, one-click flash to Arduino, and monitor a serial port.   |
 | Notification Center | Review app notifications and related actions.                                                                         |
+| Update Center       | Check the current version and install app updates.                                                                   |
 | Activity History    | Review recent organize, cleanup, and notification activity.                                                           |
 | Settings            | Manage paths, appearance, health guard, cleanup behavior, and preferences.                                            |
 | Setup Wizard        | Guided first-run setup for important folders and tools.                                                               |
@@ -204,6 +210,7 @@ pc-life-assistant/
 - Git, if you want to clone the source code instead of downloading a ZIP.
 - VS Code is optional but recommended for project launching features.
 - Optional, for the System Overlay only: Intel PresentMon or NVIDIA FrameView for the in-game FPS counter, and an NVIDIA GPU with `nvidia-smi` for GPU usage / VRAM. The overlay degrades gracefully and shows "N/A" when these are unavailable.
+- Optional, for PDF Tools only: internet access on first use, to download the embedded Java runtime and Stirling-PDF. After that, PDF processing runs fully locally.
 
 ---
 
@@ -214,7 +221,7 @@ There are two ways to use PC Life Assistant locally.
 ### Option A: Install the packaged app
 
 1. Go to this repository's **Releases** page, if a release installer has been attached.
-2. Download `PC-Life-Assistant-Setup-2.2.0.exe`.
+2. Download `PC-Life-Assistant-Setup-2.4.0.exe`.
 3. Run the installer.
 4. Launch **PC Life Assistant** from the Start menu or desktop shortcut.
 
@@ -231,7 +238,7 @@ No developer machine paths, project folders, history, or private settings are bu
 Open PowerShell and run:
 
 ```powershell
-git clone https://github.com/jeremywu0420/windows-assistant.git
+git clone https://github.com/Tse1234321/windows-assistant.git
 cd windows-assistant
 npm ci
 npm run dev
@@ -262,7 +269,7 @@ npm run package
 The generated installer is written to:
 
 ```text
-release-auto\PC-Life-Assistant-Setup-2.2.0.exe
+release-auto\PC-Life-Assistant-Setup-2.4.0.exe
 ```
 
 Build outputs such as `dist/`, `release-auto/`, `node_modules/`, generated icons, logs, and real settings files are intentionally ignored by Git.
