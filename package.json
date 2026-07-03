@@ -1,6 +1,6 @@
 {
   "name": "pc-life-assistant",
-  "version": "2.2.0",
+  "version": "2.4.0",
   "description": "PC Life Assistant - Windows desktop assistant for file organization, project shortcuts, automations, system monitoring, and Git health checks.",
   "author": "NEXUS",
   "license": "MIT",
@@ -24,6 +24,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "arch": "depcruise --config .dependency-cruiser.cjs electron src",
+    "verify": "npm run typecheck && npm run test && npm run lint && npm run arch",
     "test:e2e": "npm run build && playwright test"
   },
   "build": {
@@ -78,6 +80,7 @@
     "@vitest/coverage-v8": "^2.1.8",
     "concurrently": "^10.0.3",
     "cross-env": "^7.0.3",
+    "dependency-cruiser": "^18.0.0",
     "electron": "^42.4.1",
     "electron-builder": "^26.15.3",
     "eslint": "^9.18.0",

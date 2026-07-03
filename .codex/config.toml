@@ -1,0 +1,13 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+# Project-level Codex policy. This file is intended to be committed with the repo.
+# The project must be marked trusted in the user's global Codex config before this
+# repo-level policy is loaded.
+
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = false
+
+# Add project-specific MCP servers here only when the repo genuinely depends on them.
+# Never store credentials or tokens directly in this file.

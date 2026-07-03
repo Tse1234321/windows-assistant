@@ -25,7 +25,12 @@ const automationService = require('./automationService');
  * renderer must gate these behind the existing confirmation dialog, and dry-run
  * never executes them. Reminder/notify/scan actions are read-only and safe.
  */
-const DESTRUCTIVE_ACTIONS = new Set(['move', 'organizeFileByType', 'organizeScreenshotByDate']);
+const DESTRUCTIVE_ACTIONS = new Set([
+  'move',
+  'organizeFileByType',
+  'organizeScreenshotByDate',
+  'runProgram',
+]);
 
 function isDestructiveAction(type) {
   return DESTRUCTIVE_ACTIONS.has(type);
@@ -45,13 +50,13 @@ function nodeById(workflow) {
   return map;
 }
 
-/** Build a source-id -> [target node id] adjacency list from the edges. */
+/** Build a source-id -> [{ target, handle }] adjacency list from the edges. */
 function adjacency(workflow) {
   const adj = new Map();
   for (const edge of (workflow && workflow.edges) || []) {
     if (!edge || !edge.source || !edge.target) continue;
     if (!adj.has(edge.source)) adj.set(edge.source, []);
-    adj.get(edge.source).push(edge.target);
+    adj.get(edge.source).push({ target: edge.target, handle: edge.sourceHandle || null });
   }
   return adj;
 }
@@ -125,7 +130,13 @@ async function runWorkflow(workflow, event = { kind: 'manual' }, config = {}, op
     if (!node) return;
 
     if (node.kind === 'condition') {
-      if (!automationService.matches(nodeCondition(node), info)) return; // prune branch
+      const matched = automationService.matches(nodeCondition(node), info);
+      const handle = matched ? 'true' : 'false';
+      for (const next of adj.get(nodeId) || []) {
+        const nextHandle = next.handle || 'true';
+        if (nextHandle === handle) await walk(next.target, visited);
+      }
+      return;
     } else if (node.kind === 'action') {
       if (!executedActions.has(node.id)) {
         executedActions.add(node.id);
@@ -140,7 +151,7 @@ async function runWorkflow(workflow, event = { kind: 'manual' }, config = {}, op
     }
 
     for (const next of adj.get(nodeId) || []) {
-      await walk(next, visited);
+      await walk(next.target, visited);
     }
   }
 
@@ -150,7 +161,7 @@ async function runWorkflow(workflow, event = { kind: 'manual' }, config = {}, op
     if (!triggerFires(node, event)) continue;
     triggered = true;
     for (const next of adj.get(node.id) || []) {
-      await walk(next, new Set());
+      await walk(next.target, new Set());
     }
   }
 

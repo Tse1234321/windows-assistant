@@ -4,6 +4,7 @@ import Card from '../components/Card.jsx';
 import Dialog from '../components/Dialog.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import Toggle from '../components/Toggle.jsx';
 import { useToast } from '../components/Toast.jsx';
 
 export default function FileOrganizer() {
@@ -18,6 +19,7 @@ export default function FileOrganizer() {
   const [error, setError] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [askBefore, setAskBefore] = useState(true);
+  const [autoOrganize, setAutoOrganize] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -26,6 +28,7 @@ export default function FileOrganizer() {
       setAskBefore(
         !(result.settings.general && result.settings.general.askBeforeOrganizing === false),
       );
+      setAutoOrganize(result.settings.general?.autoOrganizeDownloads === true);
     })();
   }, []);
 
@@ -37,6 +40,20 @@ export default function FileOrganizer() {
       ...result.settings,
       general: { ...(result.settings.general || {}), downloadsPath: folder },
     });
+  };
+
+  const saveGeneralPatch = async (patch) => {
+    const result = await window.api.getSettings();
+    await window.api.saveSettings({
+      ...result.settings,
+      general: { ...(result.settings.general || {}), ...patch },
+    });
+  };
+
+  const toggleAutoOrganize = async (enabled) => {
+    setAutoOrganize(enabled);
+    await saveGeneralPatch({ autoOrganizeDownloads: enabled });
+    toast(enabled ? 'Downloads 自動整理已啟用' : 'Downloads 自動整理已關閉', 'ok');
   };
 
   const doScan = async () => {
@@ -165,6 +182,14 @@ export default function FileOrganizer() {
             開啟
           </Button>
         </div>
+      </Card>
+
+      <Card className="control-panel" style={{ marginBottom: 16 }}>
+        <div>
+          <div className="panel-label">Auto organize</div>
+          <div className="muted">新檔案進入 Downloads 後，自動等待並整理。</div>
+        </div>
+        <Toggle checked={autoOrganize} onChange={toggleAutoOrganize} />
       </Card>
 
       <div className="head-actions" style={{ justifyContent: 'flex-start', marginBottom: 16 }}>

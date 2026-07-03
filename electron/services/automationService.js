@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 const { shell } = require('electron');
 const notificationService = require('./notificationService');
 const fileOrganizerService = require('./fileOrganizerService');
@@ -199,6 +200,82 @@ async function runCleanupScan(type, notifyTitle) {
   return { ok: res.ok, count: (res.items || []).length, size };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function substituteTokens(value, info = {}) {
+  if (typeof value !== 'string') return value;
+  const replacements = {
+    path: info.path || '',
+    file: info.file || '',
+    folder: info.folder || '',
+  };
+  return value.replace(/\{(path|file|folder)\}/g, (_, key) => replacements[key] || '');
+}
+
+function normalizeArgs(args, info) {
+  if (Array.isArray(args)) return args.map((arg) => substituteTokens(String(arg), info));
+  const text = substituteTokens(String(args || '').trim(), info);
+  return text ? [text] : [];
+}
+
+function runProgram(action, info) {
+  const command = substituteTokens(String(action.command || '').trim(), info);
+  if (!command) return Promise.resolve({ ok: false, error: 'Command is not set.' });
+
+  const args = normalizeArgs(action.args, info);
+  const cwd = substituteTokens(String(action.cwd || '').trim(), info) || undefined;
+  const waitForExit = action.waitForExit === true || action.waitForExit === 'yes';
+
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(command, args, {
+        cwd,
+        shell: true,
+        windowsHide: true,
+        detached: !waitForExit,
+        stdio: waitForExit ? ['ignore', 'pipe', 'pipe'] : 'ignore',
+      });
+    } catch (err) {
+      resolve({ ok: false, error: err.message });
+      return;
+    }
+
+    if (!waitForExit) {
+      child.unref();
+      resolve({ ok: true, pid: child.pid || null, detached: true });
+      return;
+    }
+
+    const chunks = [];
+    const collect = (chunk) => {
+      if (chunks.join('').length < 4096) chunks.push(String(chunk));
+    };
+    child.stdout?.on('data', collect);
+    child.stderr?.on('data', collect);
+
+    const timeout = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, error: 'Program timed out after 5 minutes.' });
+    }, 5 * 60 * 1000);
+
+    child.on('error', (err) => {
+      clearTimeout(timeout);
+      resolve({ ok: false, error: err.message });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timeout);
+      resolve({
+        ok: code === 0,
+        exitCode: code,
+        output: chunks.join('').trim().slice(0, 4096),
+      });
+    });
+  });
+}
+
 async function runAction(action, info, config = {}) {
   try {
     switch (action && action.type) {
@@ -219,6 +296,15 @@ async function runAction(action, info, config = {}) {
       case 'openFolder':
         await shell.openPath(info.folder);
         return { ok: true };
+      case 'delay': {
+        const value = Math.max(1, Number(action.value || 1));
+        const unit = action.unit === 'minutes' ? 'minutes' : 'seconds';
+        const ms = value * (unit === 'minutes' ? 60 : 1) * 1000;
+        await sleep(ms);
+        return { ok: true, delayedMs: ms };
+      }
+      case 'runProgram':
+        return runProgram(action, info || {});
       case 'organizeFileByType':
         if (!info || !info.path) return organizeFolderByType(action, info || {});
         return organizeFileByType(action, info);
@@ -378,11 +464,15 @@ function scheduleDue(rule, now = new Date()) {
   if (condition.type !== 'schedule') return false;
   const key = rule.id || rule.name;
   const last = scheduledState.get(key) || 0;
-  const intervalMs = Math.max(1, Number(condition.everyMinutes || 0)) * 60 * 1000;
-  const mode = condition.scheduleMode || 'interval';
+  const hasEvery = Number(condition.everyMinutes || 0) > 0;
+  const hasTime = typeof condition.time === 'string' && condition.time.trim() !== '';
+  const mode =
+    condition.scheduleMode || (hasTime && !hasEvery ? 'daily' : 'interval');
+  const nowMs = now.getTime();
 
   if (mode === 'interval') {
-    return Date.now() - last >= intervalMs;
+    const intervalMs = Math.max(1, Number(condition.everyMinutes || 1)) * 60 * 1000;
+    return nowMs - last >= intervalMs;
   }
 
   const targetMinutes = parseTimeMinutes(condition.time || '09:00');
@@ -390,12 +480,17 @@ function scheduleDue(rule, now = new Date()) {
   const withinWindow = currentMinutes >= targetMinutes && currentMinutes <= targetMinutes + 1;
   if (!withinWindow) return false;
 
+  if (Array.isArray(condition.days) && condition.days.length) {
+    const days = condition.days.map((day) => Number(day)).filter(Number.isFinite);
+    if (!days.includes(now.getDay())) return false;
+  }
+
   if (mode === 'weekly') {
     const day = Number(condition.dayOfWeek || 1);
     if (now.getDay() !== day) return false;
   }
 
-  return Date.now() - last >= 22 * 60 * 60 * 1000;
+  return nowMs - last >= 22 * 60 * 60 * 1000;
 }
 
 async function handleSchedules(config) {

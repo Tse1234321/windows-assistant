@@ -10,7 +10,7 @@ function levelClass(value) {
   return 'good';
 }
 
-function MetricRow({ label, value, detail, unavailable }) {
+function MetricRow({ label, value, detail, unavailable, suffix = '%' }) {
   const { t } = useLocale();
   const percent = typeof value === 'number' ? Math.max(0, Math.min(100, value)) : 0;
   return (
@@ -19,7 +19,7 @@ function MetricRow({ label, value, detail, unavailable }) {
         <strong>{label}</strong>
         <span>{unavailable ? t('dashboard.noNetwork') : detail}</span>
       </div>
-      <em>{unavailable ? '--' : `${percent}%`}</em>
+      <em>{unavailable ? '--' : `${typeof value === 'number' ? value : percent}${suffix}`}</em>
       <div className="overview-meter" aria-hidden="true">
         <i className={levelClass(value)} style={{ width: `${percent}%` }} />
       </div>
@@ -37,6 +37,14 @@ export default function SystemOverview({ data, onNavigate }) {
   const diskDetail = disk
     ? `${disk.drive} ${formatBytes(disk.used)} / ${formatBytes(disk.total)}`
     : t('dashboard.unavailable');
+  const network = metrics?.network;
+  const networkUnavailable = !network?.available;
+  const warmupText = t('dashboard.networkWarmup');
+  const networkDetail = networkUnavailable
+    ? warmupText === 'dashboard.networkWarmup'
+      ? '正在建立網路取樣'
+      : warmupText
+    : `↓ ${network.rxMbps || 0} Mbps / ↑ ${network.txMbps || 0} Mbps`;
 
   return (
     <aside className="dashboard-side-stack">
@@ -76,7 +84,13 @@ export default function SystemOverview({ data, onNavigate }) {
           }
         />
         <MetricRow label={t('dashboard.storage')} value={disk?.usedPercent} detail={diskDetail} />
-        <MetricRow label={t('dashboard.network')} unavailable />
+        <MetricRow
+          label={t('dashboard.network')}
+          value={network?.totalMbps || 0}
+          detail={networkDetail}
+          suffix=" Mbps"
+          unavailable={networkUnavailable}
+        />
       </section>
 
       <section className="glass-card dashboard-panel">

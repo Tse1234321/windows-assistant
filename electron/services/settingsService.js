@@ -73,6 +73,8 @@ function createDefaultSettings() {
   return {
     general: {
       downloadsPath: '',
+      displayName: 'User',
+      userName: 'User',
       monitorDrives: [],
       monitorDrive: '',
       screenshotsPath: '',
@@ -93,6 +95,9 @@ function createDefaultSettings() {
       projectScanRoots: [],
       automationsEnabled: true,
       askBeforeOrganizing: true,
+      autoOrganizeDownloads: false,
+      autoOrganizeDelaySeconds: 45,
+      dashboardRefreshIntervalSeconds: 60,
       keepHistory: true,
       firstRunCompleted: false,
       lastSetupCheckAt: '',
@@ -101,6 +106,14 @@ function createDefaultSettings() {
     cleanup: {
       enabledCategories: [],
       lastScanAt: '',
+      schedule: {
+        enabled: false,
+        frequency: 'daily',
+        time: '09:00',
+        days: [1],
+        notify: true,
+        autoCleanSafe: false,
+      },
     },
     healthGuard: {
       enabled: true,
@@ -264,6 +277,13 @@ function mergeSettings(parsed) {
       enabledCategories: Array.isArray((parsed.cleanup || {}).enabledCategories)
         ? parsed.cleanup.enabledCategories
         : defaults.cleanup.enabledCategories,
+      schedule: {
+        ...defaults.cleanup.schedule,
+        ...(((parsed.cleanup || {}).schedule) || {}),
+        days: Array.isArray(((parsed.cleanup || {}).schedule || {}).days)
+          ? (parsed.cleanup.schedule.days || []).map(Number).filter(Number.isFinite)
+          : defaults.cleanup.schedule.days,
+      },
     },
     healthGuard: {
       ...defaults.healthGuard,

@@ -13,8 +13,8 @@ const consoleStyle = {
   fontFamily: '"Cascadia Code","Consolas",monospace',
   fontSize: 12.5,
   lineHeight: 1.5,
-  background: '#0d1117',
-  color: '#d6deeb',
+  background: 'color-mix(in srgb, var(--bg-elevated) 86%, var(--bg) 14%)',
+  color: 'var(--text)',
   borderRadius: 10,
   padding: 12,
   height: 280,
@@ -32,10 +32,10 @@ const selectStyle = {
 };
 const colorFor = (stream) =>
   stream === 'stderr' || stream === 'error'
-    ? '#ff7b72'
+    ? 'var(--danger)'
     : stream === 'system'
-      ? '#7ee787'
-      : '#d6deeb';
+      ? 'var(--ok)'
+      : 'var(--text)';
 
 function Console({ lines }) {
   const ref = useRef(null);

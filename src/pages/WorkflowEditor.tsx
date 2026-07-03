@@ -22,6 +22,7 @@ import InlineAlert from '../components/InlineAlert.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Toggle from '../components/Toggle.jsx';
 import { useLocale } from '../i18n.jsx';
+import { useTheme } from '../theme/ThemeProvider.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { workflowNodeTypes, type WorkflowRunState } from '../components/workflow/nodes.tsx';
 import {
@@ -53,6 +54,7 @@ interface WorkflowEdgeModel {
   id: string;
   source: string;
   target: string;
+  sourceHandle?: string | null;
 }
 
 interface WorkflowModel {
@@ -102,13 +104,13 @@ const KIND_GROUPS: { kind: NodeKind; defs: NodeTypeDef[] }[] = [
 ];
 
 const KIND_COLORS: Record<NodeKind, string> = {
-  trigger: '#22d3ee',
-  condition: '#f59e0b',
-  action: '#22c55e',
+  trigger: 'var(--accent)',
+  condition: 'var(--warning)',
+  action: 'var(--success)',
 };
 
 function edgeColor(kind?: NodeKind): string {
-  return kind ? KIND_COLORS[kind] : '#22d3ee';
+  return kind ? KIND_COLORS[kind] : 'var(--accent)';
 }
 
 function edgeFor(edge: WorkflowEdgeModel, nodes: RFNode[]): Edge {
@@ -118,6 +120,8 @@ function edgeFor(edge: WorkflowEdgeModel, nodes: RFNode[]): Edge {
     id: edge.id,
     source: edge.source,
     target: edge.target,
+    sourceHandle:
+      edge.sourceHandle || (source?.data.kind === 'condition' ? 'true' : undefined),
     animated: true,
     markerEnd: { type: MarkerType.ArrowClosed, color },
     style: { stroke: color, strokeWidth: 2 },
@@ -169,18 +173,25 @@ function fromRf(
       config: (node.data.config as Record<string, unknown>) || {},
       position: node.position,
     })),
-    edges: edges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target })),
+    edges: edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.sourceHandle || null,
+    })),
   };
 }
 
 function valueForInput(field: FieldDef, value: unknown): string {
   if (value === undefined || value === null) return '';
+  if (field.kind === 'days') return Array.isArray(value) ? value.join(',') : '';
   return String(value);
 }
 
 function normalizeFieldValue(field: FieldDef, value: string): unknown {
   if (value === '') return undefined;
   if (field.kind === 'number') return Number(value);
+  if (field.key === 'waitForExit') return value === 'yes';
   return value;
 }
 
@@ -192,9 +203,11 @@ function stepTone(step: WorkflowStep, mode: WorkflowRunResult['mode']) {
 
 export default function WorkflowEditor({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { language } = useLocale();
+  const themeCtx = useTheme() as { theme?: string } | null;
   const toastCtx = useToast() as { toast?: (message: string, type?: string) => void } | null;
   const notify = (message: string, type?: string) => toastCtx?.toast?.(message, type);
   const zh = language === 'zh';
+  const isLightTheme = themeCtx?.theme === 'light';
   const flowRef = useRef<ReactFlowInstance | null>(null);
   const addButtonRef = useRef<HTMLButtonElement | null>(null);
   const localDirtyRef = useRef(false);
@@ -371,6 +384,18 @@ export default function WorkflowEditor({ onNavigate }: { onNavigate?: (page: str
     const nextValue = normalizeFieldValue(field, value);
     if (nextValue === undefined) delete config[field.key];
     else config[field.key] = nextValue;
+    patchNodeData(selectedNode.id, { config, runState: 'idle' });
+  }
+
+  function toggleNodeDay(field: FieldDef, day: number) {
+    if (!selectedNode) return;
+    const config = { ...((selectedNode.data.config as Record<string, unknown>) || {}) };
+    const current = Array.isArray(config[field.key]) ? (config[field.key] as number[]) : [];
+    const next = current.includes(day)
+      ? current.filter((item) => item !== day)
+      : [...current, day].sort((a, b) => a - b);
+    if (next.length) config[field.key] = next;
+    else delete config[field.key];
     patchNodeData(selectedNode.id, { config, runState: 'idle' });
   }
 
@@ -750,12 +775,12 @@ export default function WorkflowEditor({ onNavigate }: { onNavigate?: (page: str
             onPaneClick={() => setSelectedNodeId(null)}
             proOptions={{ hideAttribution: true }}
           >
-            <Background color="rgba(103, 232, 249, 0.22)" gap={24} size={1.4} />
+            <Background color={isLightTheme ? 'rgba(37, 99, 235, 0.16)' : 'rgba(103, 232, 249, 0.22)'} gap={24} size={1.4} />
             <Controls className="wf-controls" />
             <MiniMap
-              bgColor="rgba(6, 16, 39, 0.94)"
+              bgColor={isLightTheme ? 'rgba(255, 255, 255, 0.9)' : 'rgba(6, 16, 39, 0.94)'}
               className="wf-minimap"
-              maskColor="rgba(3, 7, 18, 0.58)"
+              maskColor={isLightTheme ? 'rgba(219, 234, 254, 0.58)' : 'rgba(3, 7, 18, 0.58)'}
               nodeColor={(node) => edgeColor(node.data.kind as NodeKind)}
               pannable
               zoomable
@@ -851,22 +876,61 @@ export default function WorkflowEditor({ onNavigate }: { onNavigate?: (page: str
                 {(selectedDef?.fields || []).map((field) => {
                   const config = (selectedNode.data.config as Record<string, unknown>) || {};
                   const value = valueForInput(field, config[field.key]);
+                  if (field.kind === 'days') {
+                    const selectedDays = Array.isArray(config[field.key])
+                      ? (config[field.key] as number[]).map(Number)
+                      : [];
+                    const labels = zh
+                      ? ['日', '一', '二', '三', '四', '五', '六']
+                      : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    return (
+                      <div className="wf-field" key={field.key}>
+                        <label>{fieldLabel(field, language)}</label>
+                        <div className="wf-day-chips">
+                          {labels.map((label, day) => (
+                            <button
+                              className={selectedDays.includes(day) ? 'active' : ''}
+                              key={label}
+                              onClick={() => toggleNodeDay(field, day)}
+                              type="button"
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                     <div className="wf-field" key={field.key}>
                       <label>{fieldLabel(field, language)}</label>
                       <div className="wf-input-row">
-                        <input
-                          onChange={(event) => changeNodeField(field, event.target.value)}
-                          placeholder={field.placeholder}
-                          type={
-                            field.kind === 'time'
-                              ? 'time'
-                              : field.kind === 'number'
-                                ? 'number'
-                                : 'text'
-                          }
-                          value={value}
-                        />
+                        {field.kind === 'select' ? (
+                          <select
+                            onChange={(event) => changeNodeField(field, event.target.value)}
+                            value={value}
+                          >
+                            <option value="">{zh ? '預設' : 'Default'}</option>
+                            {(field.options || []).map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {zh ? option.label : option.labelEn}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            onChange={(event) => changeNodeField(field, event.target.value)}
+                            placeholder={field.placeholder}
+                            type={
+                              field.kind === 'time'
+                                ? 'time'
+                                : field.kind === 'number'
+                                  ? 'number'
+                                  : 'text'
+                            }
+                            value={value}
+                          />
+                        )}
                         {field.unit ? <span className="wf-unit">{field.unit}</span> : null}
                         {field.kind === 'folder' ? (
                           <button

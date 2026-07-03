@@ -30,6 +30,7 @@ function Icon({ name }: { name?: string }) {
     filter: <path d="M4 5h16l-6 7v5l-4 2v-7z" />,
     gauge: <path d="M5 15a7 7 0 0 1 14 0M12 15l4-5M8 18h8" />,
     clock: <path d="M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 8v5l3 2" />,
+    terminal: <path d="M4 5h16v14H4zM7 9l3 3-3 3M12 15h5" />,
     spark: <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />,
     image: <path d="M4 5h16v14H4zM7 15l3-3 2 2 3-4 3 5M8 8h.01" />,
     move: <path d="M5 12h14M13 6l6 6-6 6" />,
@@ -111,7 +112,10 @@ export function ConditionNode({ data, selected }: NodeProps) {
   return (
     <Shell data={{ ...(data as WorkflowNodeData), selected }} badge="IF">
       <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
+      <Handle className="wf-handle-true" id="true" type="source" position={Position.Right} />
+      <Handle className="wf-handle-false" id="false" type="source" position={Position.Bottom} />
+      <span className="wf-branch-label wf-branch-true">YES</span>
+      <span className="wf-branch-label wf-branch-false">NO</span>
     </Shell>
   );
 }
@@ -120,6 +124,7 @@ export function ActionNode({ data, selected }: NodeProps) {
   return (
     <Shell data={{ ...(data as WorkflowNodeData), selected }} badge="DO">
       <Handle type="target" position={Position.Left} />
+      <Handle type="source" position={Position.Right} />
     </Shell>
   );
 }

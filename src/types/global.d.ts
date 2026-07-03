@@ -30,6 +30,13 @@ interface AntivirusApi {
   onScanResult?: (callback: (result: any) => void) => () => void;
 }
 
+interface AdminLaunchApi {
+  getStatus?: () => Promise<any>;
+  enable?: () => Promise<any>;
+  disable?: () => Promise<any>;
+  launchElevated?: () => Promise<any>;
+}
+
 interface SetupToolsApi {
   getStatus?: () => Promise<any>;
   installCoreTemp?: () => Promise<any>;
@@ -42,6 +49,7 @@ interface AppApi {
   workflows?: WorkflowsApi;
   security?: SecurityApi;
   antivirus?: AntivirusApi;
+  adminLaunch?: AdminLaunchApi;
   setupTools?: SetupToolsApi;
   openExternal?: (url: string) => Promise<any>;
   pickPath?: (opts: { type: 'file' | 'folder'; title?: string }) => Promise<{ ok?: boolean; path?: string; canceled?: boolean; error?: string }>;

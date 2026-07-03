@@ -18,11 +18,36 @@ function LineIcon({ children }) {
   );
 }
 
-export default function Topbar({ title, onOpenPalette, onNavigate }) {
+function initialsFromName(name) {
+  const normalized = String(name || '').trim();
+  if (!normalized) return 'US';
+  const parts = normalized.split(/\s+/).filter(Boolean);
+  if (parts.length > 1) {
+    return parts
+      .map((part) => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+  }
+  return normalized.slice(0, 2).toUpperCase();
+}
+
+export default function Topbar({
+  title,
+  onOpenPalette,
+  onNavigate,
+  onBack,
+  onForward,
+  canBack,
+  canForward,
+}) {
   const { cycleTheme } = useTheme();
   const { language, setLanguage, t } = useLocale();
   const [unread, setUnread] = useState(0);
   const [profile, setProfile] = useState({ name: 'User', initials: 'US' });
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState('User');
+  const [profileSaving, setProfileSaving] = useState(false);
 
   useEffect(() => {
     if (!window.api) return undefined;
@@ -37,13 +62,7 @@ export default function Topbar({ title, onOpenPalette, onNavigate }) {
       const configuredName =
         settings?.settings?.general?.displayName || settings?.settings?.general?.userName;
       if (configuredName) {
-        const initials = configuredName
-          .split(/\s+/)
-          .map((part) => part[0])
-          .join('')
-          .slice(0, 2)
-          .toUpperCase();
-        setProfile({ name: configuredName, initials: initials || 'U' });
+        setProfile({ name: configuredName, initials: initialsFromName(configuredName) });
       }
     };
     refresh();
@@ -53,6 +72,35 @@ export default function Topbar({ title, onOpenPalette, onNavigate }) {
       clearInterval(id);
     };
   }, []);
+
+  const openProfileEditor = () => {
+    setProfileDraft(profile.name);
+    setEditingProfile(true);
+  };
+
+  const saveProfileName = async () => {
+    const displayName = profileDraft.trim() || 'User';
+    setProfileSaving(true);
+    try {
+      const result = await window.api?.getSettings?.();
+      const settings = result?.settings || {};
+      const next = {
+        ...settings,
+        general: {
+          ...(settings.general || {}),
+          displayName,
+          userName: displayName,
+        },
+      };
+      const saved = await window.api?.saveSettings?.(next);
+      if (saved?.ok !== false) {
+        setProfile({ name: displayName, initials: initialsFromName(displayName) });
+        setEditingProfile(false);
+      }
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   const today = useMemo(
     () =>
@@ -66,10 +114,36 @@ export default function Topbar({ title, onOpenPalette, onNavigate }) {
 
   return (
     <header className="topbar">
-      <div className="tb-welcome">
-        <span>{today}</span>
-        <strong>{t('shell.welcome')}</strong>
-        <em>{title}</em>
+      <div className="tb-left">
+        <span className="tb-nav-history">
+          <button
+            type="button"
+            className="tb-icon-btn tb-history-btn"
+            onClick={onBack}
+            disabled={!canBack}
+            title={`${t('shell.back')} (Alt+←)`}
+          >
+            <LineIcon>
+              <path d="M14 6l-6 6 6 6" />
+            </LineIcon>
+          </button>
+          <button
+            type="button"
+            className="tb-icon-btn tb-history-btn"
+            onClick={onForward}
+            disabled={!canForward}
+            title={`${t('shell.forward')} (Alt+→)`}
+          >
+            <LineIcon>
+              <path d="M10 6l6 6-6 6" />
+            </LineIcon>
+          </button>
+        </span>
+        <div className="tb-welcome">
+          <span>{today}</span>
+          <strong>{t('shell.welcome')}</strong>
+          <em>{title}</em>
+        </div>
       </div>
 
       <button
@@ -128,14 +202,34 @@ export default function Topbar({ title, onOpenPalette, onNavigate }) {
         >
           {language === 'zh' ? '中文' : 'EN'}
         </button>
-        <button
-          type="button"
-          className="tb-user"
-          onClick={() => onNavigate && onNavigate('settings')}
-        >
-          <span>{profile.initials}</span>
-          <strong>{profile.name}</strong>
-        </button>
+        <div className="tb-user-wrap">
+          <button type="button" className="tb-user" onClick={openProfileEditor}>
+            <span>{profile.initials}</span>
+            <strong>{profile.name}</strong>
+          </button>
+          {editingProfile ? (
+            <div className="tb-user-editor">
+              <input
+                autoFocus
+                value={profileDraft}
+                maxLength={32}
+                onChange={(event) => setProfileDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') saveProfileName();
+                  if (event.key === 'Escape') setEditingProfile(false);
+                }}
+              />
+              <div>
+                <button type="button" onClick={() => setEditingProfile(false)}>
+                  {t('shell.cancel')}
+                </button>
+                <button type="button" disabled={profileSaving} onClick={saveProfileName}>
+                  {profileSaving ? t('shell.saving') : t('shell.save')}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
     </header>
   );

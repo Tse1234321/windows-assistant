@@ -12,6 +12,7 @@ const SAMPLE_HISTORY_MAX = 90;
 const cpuHistory = [];
 const sampleHistory = [];
 let processCache = { at: 0, data: { cpu: [], memory: [] } };
+let networkCache = { at: 0, totals: null, rates: null };
 
 function cpuTimes() {
   const cpus = os.cpus();
@@ -166,6 +167,73 @@ function normalizeRows(value) {
   return Array.isArray(value) ? value : [value];
 }
 
+function computeNetworkRates(previous, next) {
+  if (!previous || !next) {
+    return {
+      available: false,
+      rxBytesPerSecond: 0,
+      txBytesPerSecond: 0,
+      rxMbps: 0,
+      txMbps: 0,
+      totalMbps: 0,
+      warmedUp: false,
+    };
+  }
+  const dt = Math.max(0, (Number(next.at || 0) - Number(previous.at || 0)) / 1000);
+  if (!dt) {
+    return {
+      available: false,
+      rxBytesPerSecond: 0,
+      txBytesPerSecond: 0,
+      rxMbps: 0,
+      txMbps: 0,
+      totalMbps: 0,
+      warmedUp: false,
+    };
+  }
+  const rxBytesPerSecond = Math.max(
+    0,
+    (Number(next.receivedBytes || 0) - Number(previous.receivedBytes || 0)) / dt,
+  );
+  const txBytesPerSecond = Math.max(
+    0,
+    (Number(next.sentBytes || 0) - Number(previous.sentBytes || 0)) / dt,
+  );
+  const toMbps = (bytesPerSecond) => Math.round(bytesPerSecond * 8 / 1024 / 1024 * 10) / 10;
+  const rxMbps = toMbps(rxBytesPerSecond);
+  const txMbps = toMbps(txBytesPerSecond);
+  return {
+    available: true,
+    rxBytesPerSecond,
+    txBytesPerSecond,
+    rxMbps,
+    txMbps,
+    totalMbps: Math.round((rxMbps + txMbps) * 10) / 10,
+    warmedUp: true,
+  };
+}
+
+async function getNetworkThroughput() {
+  if (Date.now() - networkCache.at < 3000 && networkCache.rates) return networkCache.rates;
+  const script = String.raw`
+$rows = Get-NetAdapterStatistics
+$rx = ($rows | Measure-Object -Property ReceivedBytes -Sum).Sum
+$tx = ($rows | Measure-Object -Property SentBytes -Sum).Sum
+[pscustomobject]@{ receivedBytes = [double]$rx; sentBytes = [double]$tx } | ConvertTo-Json -Compress
+`;
+  const parsed = await execPowerShellJson(script, 5000);
+  const totals = parsed
+    ? {
+        at: Date.now(),
+        receivedBytes: Number(parsed.receivedBytes || 0),
+        sentBytes: Number(parsed.sentBytes || 0),
+      }
+    : null;
+  const rates = computeNetworkRates(networkCache.totals, totals);
+  networkCache = { at: Date.now(), totals: totals || networkCache.totals, rates };
+  return rates;
+}
+
 async function getTopProcesses() {
   if (Date.now() - processCache.at < 15000) return processCache.data;
   const script = String.raw`
@@ -248,12 +316,18 @@ function pushSample(metrics) {
     gpuTemp: metrics.temperatureSummary.hottestGpu,
     cFreePercent: c ? c.freePercent : null,
     dFreePercent: d ? d.freePercent : null,
+    netRxKb: metrics.network?.available
+      ? Math.round(Number(metrics.network.rxBytesPerSecond || 0) / 1024)
+      : null,
+    netTxKb: metrics.network?.available
+      ? Math.round(Number(metrics.network.txBytesPerSecond || 0) / 1024)
+      : null,
   });
   while (sampleHistory.length > SAMPLE_HISTORY_MAX) sampleHistory.shift();
 }
 
 async function getMetrics(options = {}) {
-  const [cpu, disks, temperatures, topProcesses] = await Promise.all([
+  const [cpu, disks, temperatures, topProcesses, network] = await Promise.all([
     getCpuUsage(),
     getDisksUsage(options),
     hardwareSensorService.getTemperatures().catch((err) => ({
@@ -265,6 +339,15 @@ async function getMetrics(options = {}) {
       message: err.message,
     })),
     getTopProcesses().catch(() => ({ cpu: [], memory: [] })),
+    getNetworkThroughput().catch(() => ({
+      available: false,
+      rxBytesPerSecond: 0,
+      txBytesPerSecond: 0,
+      rxMbps: 0,
+      txMbps: 0,
+      totalMbps: 0,
+      warmedUp: false,
+    })),
   ]);
 
   const memory = getMemoryUsage();
@@ -278,6 +361,7 @@ async function getMetrics(options = {}) {
     disks,
     temperatures,
     temperatureSummary: temperatureSummary(temperatures),
+    network,
     topProcesses,
     hardware: hardwareSummary(temperatures),
     uptimeSeconds: os.uptime(),
@@ -407,6 +491,8 @@ module.exports = {
   resolveDrives,
   getMetrics,
   getTopProcesses,
+  getNetworkThroughput,
+  computeNetworkRates,
   computeHealthScore,
   defaultDrivePath,
 };

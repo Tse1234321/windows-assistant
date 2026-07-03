@@ -118,6 +118,14 @@ function defaultSettings() {
     lowDiskUsagePercent: 90,
     showCleanupReport: true,
     writeDetailedLog: true,
+    schedule: {
+      enabled: false,
+      frequency: 'daily',
+      time: '09:00',
+      days: [1],
+      notify: true,
+      autoCleanSafe: false,
+    },
     disabledStartupItems: [],
   };
 }
@@ -168,6 +176,13 @@ function normalizeSettings(input = {}) {
     ),
     showCleanupReport: input.showCleanupReport !== false,
     writeDetailedLog: input.writeDetailedLog !== false,
+    schedule: {
+      ...defaults.schedule,
+      ...((input.schedule && typeof input.schedule === 'object') ? input.schedule : {}),
+      days: Array.isArray(input.schedule?.days)
+        ? input.schedule.days.map(Number).filter(Number.isFinite)
+        : defaults.schedule.days,
+    },
     disabledStartupItems: uniqueStrings(
       Array.isArray(input.disabledStartupItems) ? input.disabledStartupItems : [],
     ),

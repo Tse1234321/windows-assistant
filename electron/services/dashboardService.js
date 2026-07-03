@@ -400,6 +400,7 @@ async function getProjectStats(config) {
 function systemNodes(metrics, health, cleanup) {
   const disk = (metrics?.disks || []).find((item) => item.ok) || null;
   const recycle = cleanup?.recycleBin || {};
+  const network = metrics?.network || {};
   return [
     node({
       id: 'system-cpu',
@@ -436,13 +437,17 @@ function systemNodes(metrics, health, cleanup) {
       id: 'system-network',
       label: 'Network',
       type: 'system',
-      value: 0,
+      value: network.available ? network.totalMbps : 0,
       status: 'normal',
       updatedAt: new Date().toISOString(),
       route: 'monitor',
       meta: {
-        unavailable: true,
-        reason: 'Live network throughput is not exposed by the current backend.',
+        unavailable: !network.available,
+        unit: 'Mbps',
+        rxMbps: network.rxMbps || 0,
+        txMbps: network.txMbps || 0,
+        warmedUp: network.warmedUp === true,
+        reason: network.available ? '' : 'Network throughput is warming up.',
       },
     }),
     node({
@@ -606,10 +611,14 @@ async function getDashboardStats(config) {
     },
     nodes,
     unavailable: [
-      {
-        key: 'networkUsage',
-        reason: 'Live network throughput is not exposed by the current backend.',
-      },
+      ...(metrics.network?.available
+        ? []
+        : [
+            {
+              key: 'networkUsage',
+              reason: 'Network throughput is warming up.',
+            },
+          ]),
       {
         key: 'cacheSize',
         reason:

@@ -120,6 +120,14 @@ export function lcResonance(l, c) {
   return { f };
 }
 
+// Series RLC: f0 resonance, quality factor Q, and bandwidth.
+export function rlcSeries(r, l, c) {
+  const f0 = 1 / (2 * Math.PI * Math.sqrt(l * c));
+  const q = Math.sqrt(l / c) / r;
+  const bandwidth = f0 / q;
+  return { f0, q, bandwidth };
+}
+
 // ---- Series / parallel ----------------------------------------------------
 
 export function combineResistors(values, mode) {

@@ -4,7 +4,7 @@
  */
 
 export type NodeKind = 'trigger' | 'condition' | 'action';
-export type FieldKind = 'text' | 'number' | 'folder' | 'time';
+export type FieldKind = 'text' | 'number' | 'folder' | 'time' | 'select' | 'days';
 
 export interface FieldDef {
   key: string;
@@ -13,6 +13,7 @@ export interface FieldDef {
   kind: FieldKind;
   placeholder?: string;
   unit?: string;
+  options?: { value: string; label: string; labelEn: string }[];
 }
 
 export interface NodeTypeDef {
@@ -66,6 +67,34 @@ const timeField: FieldDef = {
   placeholder: '09:00',
 };
 
+const scheduleModeField: FieldDef = {
+  key: 'scheduleMode',
+  label: '模式',
+  labelEn: 'Mode',
+  kind: 'select',
+  options: [
+    { value: 'interval', label: '間隔', labelEn: 'Interval' },
+    { value: 'daily', label: '每日', labelEn: 'Daily' },
+    { value: 'weekly', label: '每週', labelEn: 'Weekly' },
+  ],
+};
+
+const everyMinutesField: FieldDef = {
+  key: 'everyMinutes',
+  label: '每隔',
+  labelEn: 'Every',
+  kind: 'number',
+  placeholder: '30',
+  unit: 'min',
+};
+
+const daysField: FieldDef = {
+  key: 'days',
+  label: '星期',
+  labelEn: 'Days',
+  kind: 'days',
+};
+
 const targetFolderField: FieldDef = {
   key: 'target',
   label: '目標資料夾',
@@ -108,7 +137,7 @@ export const TRIGGER_TYPES: NodeTypeDef[] = [
     desc: '在指定時間觸發工作流。',
     descEn: 'Runs the workflow at the configured time.',
     icon: 'clock',
-    fields: [timeField],
+    fields: [scheduleModeField, everyMinutesField, timeField, daysField],
   },
 ];
 
@@ -172,6 +201,74 @@ export const ACTION_TYPES: NodeTypeDef[] = [
     descEn: 'Shows a system notification for reminders or alerts.',
     icon: 'bell',
     fields: [],
+  },
+  {
+    type: 'delay',
+    label: '等待',
+    labelEn: 'Delay',
+    desc: '暫停流程一段時間再繼續下一個動作。',
+    descEn: 'Pauses the workflow before continuing to the next action.',
+    icon: 'clock',
+    fields: [
+      {
+        key: 'value',
+        label: '時間',
+        labelEn: 'Duration',
+        kind: 'number',
+        placeholder: '5',
+      },
+      {
+        key: 'unit',
+        label: '單位',
+        labelEn: 'Unit',
+        kind: 'select',
+        options: [
+          { value: 'seconds', label: '秒', labelEn: 'Seconds' },
+          { value: 'minutes', label: '分鐘', labelEn: 'Minutes' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'runProgram',
+    label: '執行程式',
+    labelEn: 'Run program',
+    desc: '啟動本機程式或命令，可使用 {path}、{file}、{folder} token。',
+    descEn: 'Runs a local command or program with {path}, {file}, and {folder} tokens.',
+    icon: 'terminal',
+    fields: [
+      {
+        key: 'command',
+        label: '命令',
+        labelEn: 'Command',
+        kind: 'text',
+        placeholder: 'notepad.exe',
+      },
+      {
+        key: 'args',
+        label: '參數',
+        labelEn: 'Args',
+        kind: 'text',
+        placeholder: '{path}',
+      },
+      {
+        key: 'cwd',
+        label: '工作目錄',
+        labelEn: 'Working dir',
+        kind: 'folder',
+      },
+      {
+        key: 'waitForExit',
+        label: '等待結束',
+        labelEn: 'Wait',
+        kind: 'select',
+        options: [
+          { value: 'no', label: '否', labelEn: 'No' },
+          { value: 'yes', label: '是', labelEn: 'Yes' },
+        ],
+      },
+    ],
+    destructive: true,
   },
   {
     type: 'openFolder',
@@ -270,6 +367,14 @@ function shortPath(value: unknown): string {
 
 function displayFieldValue(field: FieldDef, value: unknown): string {
   if (value === undefined || value === null || value === '') return '';
+  if (field.kind === 'days') {
+    const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return Array.isArray(value) ? value.map((day) => labels[Number(day)]).filter(Boolean).join(', ') : '';
+  }
+  if (field.kind === 'select') {
+    const found = field.options?.find((option) => option.value === String(value));
+    return found ? found.labelEn : String(value);
+  }
   if (field.kind === 'folder') return shortPath(value) || String(value);
   if (field.kind === 'number') return `${value}${field.unit ? ` ${field.unit}` : ''}`;
   return String(value);

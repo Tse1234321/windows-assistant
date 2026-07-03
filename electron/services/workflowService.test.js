@@ -51,6 +51,26 @@ describe('runWorkflow', () => {
     expect(res2.steps).toHaveLength(1);
   });
 
+  it('routes condition true and false handles separately', async () => {
+    const wf = makeWorkflow(
+      [
+        triggerNode,
+        conditionNode('c1', 'extension', '.pdf'),
+        actionNode('yes', 'notify'),
+        actionNode('no', 'cleanupReminder'),
+      ],
+      [
+        { id: 'e1', source: 't1', target: 'c1' },
+        { id: 'e2', source: 'c1', sourceHandle: 'true', target: 'yes' },
+        { id: 'e3', source: 'c1', sourceHandle: 'false', target: 'no' },
+      ],
+    );
+    const yes = await runWorkflow(wf, { kind: 'file', info: { ext: '.pdf' } });
+    expect(yes.steps.map((step) => step.nodeId)).toEqual(['yes']);
+    const no = await runWorkflow(wf, { kind: 'file', info: { ext: '.png' } });
+    expect(no.steps.map((step) => step.nodeId)).toEqual(['no']);
+  });
+
   it('does not double-execute an action reachable by two paths', async () => {
     const wf = makeWorkflow(
       [
@@ -123,6 +143,7 @@ describe('isDestructiveNode', () => {
   it('flags file-mutating actions and clears safe ones', () => {
     expect(isDestructiveNode(actionNode('a', 'move'))).toBe(true);
     expect(isDestructiveNode(actionNode('a', 'organizeFileByType'))).toBe(true);
+    expect(isDestructiveNode(actionNode('a', 'runProgram'))).toBe(true);
     expect(isDestructiveNode(actionNode('a', 'notify'))).toBe(false);
     expect(isDestructiveNode(actionNode('a', 'cleanupReminder'))).toBe(false);
     expect(isDestructiveNode(triggerNode)).toBe(false);

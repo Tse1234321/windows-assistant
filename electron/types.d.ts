@@ -30,6 +30,7 @@ export interface GeneralSettings {
   projectScanRoots: string[];
   automationsEnabled: boolean;
   askBeforeOrganizing: boolean;
+  dashboardRefreshIntervalSeconds: number;
   keepHistory: boolean;
   firstRunCompleted: boolean;
   lastSetupCheckAt: string;

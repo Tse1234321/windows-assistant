@@ -13,7 +13,7 @@ export const NAV_SECTIONS = [
       { key: 'security', label: 'nav.security', icon: 'shield' },
       { key: 'monitor', label: 'nav.monitor', icon: 'pulse' },
       { key: 'automations', label: 'nav.automations', icon: 'bolt' },
-      { key: 'workflows', label: 'nav.workflows', icon: 'nodes' },
+      { key: 'workflows', label: 'nav.workflows', icon: 'flow' },
       { key: 'settings', label: 'nav.settings', icon: 'gear' },
     ],
   },
@@ -21,6 +21,7 @@ export const NAV_SECTIONS = [
     section: 'nav.tools',
     items: [
       { key: 'screenshots', label: 'nav.screenshots', icon: 'image' },
+      { key: 'pdf', label: 'nav.pdf', icon: 'pdf' },
       { key: 'workspaceTemplates', label: 'nav.workspaceTemplates', icon: 'template' },
       { key: 'modes', label: 'nav.modes', icon: 'play' },
       { key: 'rules', label: 'nav.rules', icon: 'rules' },
@@ -31,7 +32,8 @@ export const NAV_SECTIONS = [
     section: 'nav.advanced',
     items: [
       { key: 'notifications', label: 'nav.notifications', icon: 'bell' },
-      { key: 'health', label: 'nav.health', icon: 'shield' },
+      { key: 'updates', label: 'nav.updates', icon: 'download' },
+      { key: 'health', label: 'nav.health', icon: 'heart' },
       { key: 'toolchain', label: 'nav.toolchain', icon: 'terminal' },
       { key: 'eeTools', label: 'nav.eeTools', icon: 'chip' },
       { key: 'embedded', label: 'nav.embedded', icon: 'cpu' },
@@ -66,6 +68,7 @@ function Icon({ name }) {
     rules: <path d="M5 6h14M5 12h14M5 18h9M3 6h.01M3 12h.01M3 18h.01" />,
     history: <path d="M4 12a8 8 0 1 0 3-6.2M4 5v5h5M12 8v5l3 2" />,
     bell: <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7M10 20h4" />,
+    download: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
     shield: <path d="M12 3l8 4v5c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V7z" />,
     terminal: <path d="M4 6h16v12H4zM7 10l2 2-2 2M11 15h5" />,
     chip: <path d="M8 8h8v8H8zM4 10h4M4 14h4M16 10h4M16 14h4M10 4v4M14 4v4M10 16v4M14 16v4" />,
@@ -74,6 +77,13 @@ function Icon({ name }) {
     ),
     keys: <path d="M7 14a4 4 0 1 1 2.8-6.8L21 18.4V21h-2.6l-2-2H14v-2.4l-2-2A4 4 0 0 1 7 14z" />,
     wand: <path d="M4 20L20 4M14 4h6v6M5 5l1 2 2 1-2 1-1 2-1-2-2-1 2-1z" />,
+    flow: (
+      <path d="M4 5h5v5H4zM15 14h5v5h-5zM9 7.5h5.5a3 3 0 0 1 3 3V14M6.5 10v4a3 3 0 0 0 3 3H15" />
+    ),
+    heart: (
+      <path d="M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10zM8 11h2l1-2 2 4 1-2h2" />
+    ),
+    pdf: <path d="M6 3h9l4 4v14H6zM15 3v4h4M9 11h6M9 15h6M9 19h3" />,
   };
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -127,10 +137,32 @@ function SystemStatusCard() {
   );
 }
 
+const COLLAPSE_KEY = 'nexus.sidebarCollapsed';
+
 export default function Sidebar({ current, onNavigate }) {
   const { t } = useLocale();
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === '1';
+    } catch (_) {
+      return false;
+    }
+  });
+
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      const next = !value;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+      } catch (_) {
+        /* non-fatal */
+      }
+      return next;
+    });
+  };
+
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="brand">
         <NexusLogo className="brand-mark" />
         <span className="brand-wordmark">
@@ -151,6 +183,8 @@ export default function Sidebar({ current, onNavigate }) {
                 className={`nav-item ${current === item.key ? 'active' : ''}`}
                 onClick={() => onNavigate(item.key)}
                 type="button"
+                aria-label={t(item.label)}
+                title={collapsed ? t(item.label) : undefined}
               >
                 <span className="icon">
                   <Icon name={item.icon} />
@@ -163,7 +197,27 @@ export default function Sidebar({ current, onNavigate }) {
       </nav>
 
       <div className="spacer" />
-      <SystemStatusCard />
+      {collapsed ? null : <SystemStatusCard />}
+      <button
+        type="button"
+        className="sidebar-collapse-btn"
+        onClick={toggleCollapsed}
+        title={collapsed ? t('shell.expandSidebar') : t('shell.collapseSidebar')}
+        aria-label={collapsed ? t('shell.expandSidebar') : t('shell.collapseSidebar')}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <g
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {collapsed ? <path d="M9 6l6 6-6 6" /> : <path d="M15 6l-6 6 6 6" />}
+          </g>
+        </svg>
+        <span>{collapsed ? '' : t('shell.collapseSidebar')}</span>
+      </button>
     </aside>
   );
 }

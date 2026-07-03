@@ -1,5 +1,8 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import DashboardGlobe from '../components/dashboard/DashboardGlobe.jsx';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+
+// Three.js is ~520 KB — load the decorative globe after first paint instead
+// of blocking app startup on it.
+const DashboardGlobe = lazy(() => import('../components/dashboard/DashboardGlobe.jsx'));
 import FileAnalytics from '../components/dashboard/FileAnalytics.jsx';
 import RecentActivities from '../components/dashboard/RecentActivities.jsx';
 import StatCard from '../components/dashboard/StatCard.jsx';
@@ -7,8 +10,20 @@ import SystemOverview from '../components/dashboard/SystemOverview.jsx';
 import { usePollingEffect } from '../hooks/usePollingEffect.js';
 import InlineAlert from '../components/InlineAlert.jsx';
 import { useLocale } from '../i18n.jsx';
-import { getDashboardStats } from '../services/dashboardService.js';
+import {
+  getCachedDashboardStats,
+  getDashboardStats,
+  isDashboardCacheFresh,
+} from '../services/dashboardService.js';
 import { formatBytes } from '../utils/format.js';
+
+const DEFAULT_REFRESH_INTERVAL_MS = 60 * 1000;
+
+function normalizeRefreshIntervalMs(value) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds)) return DEFAULT_REFRESH_INTERVAL_MS;
+  return Math.max(10, Math.min(3600, Math.round(seconds))) * 1000;
+}
 
 function healthTone(score) {
   if (score == null) return 'normal';
@@ -36,14 +51,44 @@ function pickNode(nodes, id) {
 
 export default function Dashboard({ onNavigate }) {
   const { t } = useLocale();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(() => getCachedDashboardStats());
+  const [loading, setLoading] = useState(() => !getCachedDashboardStats());
   const [error, setError] = useState('');
   const [selectedNode, setSelectedNode] = useState(null);
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(DEFAULT_REFRESH_INTERVAL_MS);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    const result = await getDashboardStats().catch((err) => ({ ok: false, error: err.message }));
+  useEffect(() => {
+    let alive = true;
+    window.api
+      ?.getSettings?.()
+      .then((result) => {
+        if (!alive) return;
+        setRefreshIntervalMs(
+          normalizeRefreshIntervalMs(result?.settings?.general?.dashboardRefreshIntervalSeconds),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const refresh = useCallback(async (options = {}) => {
+    const force = options.force === true;
+    if (!force && isDashboardCacheFresh(refreshIntervalMs)) {
+      const cached = getCachedDashboardStats();
+      if (cached) {
+        setData(cached);
+        setLoading(false);
+        return cached;
+      }
+    }
+
+    setLoading((current) => current || !data || force);
+    const result = await getDashboardStats({ force, maxAgeMs: refreshIntervalMs }).catch((err) => ({
+      ok: false,
+      error: err.message,
+    }));
     if (result?.ok) {
       setData(result);
       setError('');
@@ -51,9 +96,10 @@ export default function Dashboard({ onNavigate }) {
       setError(result?.error || 'Dashboard data is unavailable.');
     }
     setLoading(false);
-  }, []);
+    return result;
+  }, [data, refreshIntervalMs]);
 
-  usePollingEffect(refresh, 30000, [refresh]);
+  usePollingEffect(refresh, refreshIntervalMs, [refresh, refreshIntervalMs]);
 
   const stats = useMemo(() => data?.stats || {}, [data?.stats]);
   const metrics = useMemo(() => data?.system?.metrics || {}, [data?.system?.metrics]);
@@ -146,7 +192,7 @@ export default function Dashboard({ onNavigate }) {
             <span>
               {t('dashboard.updated')} {formatDateTime(data?.generatedAt)}
             </span>
-            <button type="button" onClick={refresh} disabled={loading}>
+            <button type="button" onClick={() => refresh({ force: true })} disabled={loading}>
               {loading ? t('dashboard.refreshing') : t('dashboard.refresh')}
             </button>
           </div>
@@ -179,14 +225,16 @@ export default function Dashboard({ onNavigate }) {
       <div className="dashboard-main-grid dashboard-command-grid">
         <SystemOverview data={data} onNavigate={onNavigate} />
         <div className="dashboard-center">
-          <DashboardGlobe
-            nodes={nodes}
-            loading={loading && !data}
-            selectedNode={selectedNode}
-            onNodeSelect={setSelectedNode}
-            onNodeClear={handleNodeClear}
-            onNodeOpen={handleNodeOpen}
-          />
+          <Suspense fallback={<div className="loading-block">{t('dashboard.loadingNodes')}</div>}>
+            <DashboardGlobe
+              nodes={nodes}
+              loading={loading && !data}
+              selectedNode={selectedNode}
+              onNodeSelect={setSelectedNode}
+              onNodeClear={handleNodeClear}
+              onNodeOpen={handleNodeOpen}
+            />
+          </Suspense>
           <div className="node-legend glass-card">
             <span>
               <i className="legend-good" />

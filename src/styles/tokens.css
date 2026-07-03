@@ -27,6 +27,49 @@
   --input-bg: rgba(6, 14, 34, 0.82);
   --input-text: #eaf7ff;
 
+  /* Design Kit semantic aliases for new UI work. */
+  --surface-1: var(--bg-elevated);
+  --surface-2: var(--bg-card);
+  --text-1: var(--text);
+  --text-2: var(--text-dim);
+  --text-3: var(--text-faint);
+  --accent-text: var(--accent-contrast);
+  --accent-deep: var(--accent-strong);
+  --success: var(--ok);
+  --warning: var(--warn);
+  --focus-ring: var(--accent);
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  --fs-caption: 12px;
+  --fs-small: 14px;
+  --fs-body: 16px;
+  --fs-h3: 20px;
+  --fs-h2: 25px;
+  --fs-h1: 31px;
+  --lh-body: 1.6;
+  --lh-display: 1.2;
+  --font-body: 'Segoe UI', 'Microsoft JhengHei', system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-body);
+  --font-data: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+
+  --r-control: var(--radius-sm);
+  --r-card: var(--radius);
+  --r-modal: var(--radius-lg);
+  --elev-rest: var(--shadow-sm);
+  --elev-raised: var(--shadow);
+  --dur-micro: 160ms;
+  --dur-panel: 240ms;
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
   --shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.24);
   --shadow: 0 24px 72px rgba(0, 0, 0, 0.38);
   --overlay: rgba(3, 8, 22, 0.76);

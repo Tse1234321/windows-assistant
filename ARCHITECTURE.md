@@ -107,3 +107,58 @@ It is local-only and can be disabled via `general.diagnostics === false`.
 (`.github/workflows/ci.yml`, Node 20 & 22). Unit tests (Vitest) focus on pure
 logic and services; an Electron stub (`test/stubs/electron.js`) keeps service
 tests hermetic. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Architecture Kit baseline
+
+This repo adapts the universal architecture kit to the existing Electron shape
+instead of forcing artificial `src/core`, `src/app`, or `src/adapters`
+directories.
+
+### Layer mapping
+
+| Architecture kit layer | This repo | Responsibility | Must not contain |
+| --- | --- | --- | --- |
+| entry | `electron/main.js`, `electron/preload.js`, `src/App.jsx`, `src/pages/` | App lifecycle, IPC registration, bridge exposure, routing, screen composition | Deep business logic or duplicated persistence |
+| adapters | `electron/services/`, `src/services/` | Filesystem, OS, updater, antivirus, settings persistence, IPC-backed renderer clients | React UI composition |
+| app | Page-level orchestration and focused service functions | Workflow coordination between UI, services, and settings | Raw Node/Electron access from renderer |
+| core | `src/utils/`, pure helpers inside feature modules, reusable predicates such as automation matching | Deterministic calculations, transforms, validators, and state-machine logic | I/O, React components, Electron APIs |
+| shared | `electron/types.d.ts`, stable constants, type-only contracts | Types and constants consumed by multiple layers | Runtime side effects |
+
+Allowed dependencies point inward toward reusable logic and stable contracts.
+The important Electron rule is stricter than the generic model: `src/**` never
+imports `electron/**`, and `electron/**` never imports renderer modules.
+
+### Machine-checked rules
+
+Run:
+
+```bash
+npm run arch
+```
+
+The dependency-cruiser config in `.dependency-cruiser.cjs` enforces:
+
+- renderer code does not import Electron main, preload, or service files
+- Electron code does not import renderer files
+- preload stays a bridge and does not import service implementations
+- service/client utility layers do not import page, layout, or component modules
+- renderer utilities stay independent of UI modules
+- circular dependencies are forbidden
+
+### State and boundary validation
+
+- Settings persistence has one owner: `electron/services/settingsService.js`.
+- The renderer sees backend capabilities only through `window.api`.
+- External inputs from files, OS APIs, updater responses, user-selected paths,
+  and IPC payloads should be normalized or validated in entry/adapters before
+  they reach pure logic.
+- Derived data should be recomputed from the owner state unless an ADR records
+  the cache and invalidation strategy.
+
+### Architecture decision records
+
+ADRs live in `docs/adr/`; start from `docs/adr/0000-template.md`.
+
+Write an ADR before adding a new top-level directory, creating a new cross-boundary
+dependency, introducing a production dependency, changing persistence format, or
+altering installer/signing/update behavior.

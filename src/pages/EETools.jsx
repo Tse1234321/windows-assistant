@@ -7,6 +7,7 @@ import {
   rcFilter,
   rlFilter,
   lcResonance,
+  rlcSeries,
   combineResistors,
   combineCapacitors,
   decodeResistorColors,
@@ -332,6 +333,10 @@ function Reactive() {
   const rc = Number.isFinite(r) && Number.isFinite(c) ? rcFilter(r, c) : null;
   const rl = Number.isFinite(r) && Number.isFinite(l) ? rlFilter(r, l) : null;
   const lc = Number.isFinite(l) && Number.isFinite(c) ? lcResonance(l, c) : null;
+  const rlc =
+    Number.isFinite(r) && Number.isFinite(l) && Number.isFinite(c) && r > 0 && l > 0 && c > 0
+      ? rlcSeries(r, l, c)
+      : null;
   return (
     <ToolCard icon="∿" title="RC / RL / LC" hint="輸入需要的數值；對應的結果會出現。">
       <Row>
@@ -357,7 +362,7 @@ function Reactive() {
         />
         <div />
       </Row>
-      {rc || rl || lc ? (
+      {rc || rl || lc || rlc ? (
         <div className="ee-readout">
           {rc ? (
             <div>
@@ -374,6 +379,13 @@ function Reactive() {
           {lc ? (
             <div>
               <K>LC</K> f = <Val>{formatEng(lc.f, 'Hz')}</Val>
+            </div>
+          ) : null}
+          {rlc ? (
+            <div>
+              <K>RLC</K> f0 = <Val>{formatEng(rlc.f0, 'Hz')}</Val>, Q ={' '}
+              <Val>{rlc.q.toPrecision(4)}</Val>, BW ={' '}
+              <Val>{formatEng(rlc.bandwidth, 'Hz')}</Val>
             </div>
           ) : null}
         </div>

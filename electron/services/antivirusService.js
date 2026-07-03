@@ -31,7 +31,8 @@ function reputationCachePath() {
 
 async function readJsonObject(target) {
   try {
-    const parsed = JSON.parse(await fs.promises.readFile(target, 'utf-8'));
+    const text = (await fs.promises.readFile(target, 'utf-8')).replace(/^\uFEFF/, '');
+    const parsed = JSON.parse(text);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch (_) {
     return {};
@@ -200,6 +201,20 @@ function execPowerShell(script, timeout = 45000) {
   });
 }
 
+function execFileCapture(file, args = [], options = {}) {
+  return new Promise((resolve) => {
+    execFile(file, args, { timeout: 45000, windowsHide: true, ...options }, (err, stdout, stderr) => {
+      resolve({
+        ok: !err,
+        exitCode: typeof err?.code === 'number' ? err.code : 0,
+        error: err ? stderr || err.message : '',
+        stdout: stdout || '',
+        stderr: stderr || '',
+      });
+    });
+  });
+}
+
 function parseJson(stdout, fallback) {
   try {
     return JSON.parse(stdout);
@@ -208,47 +223,59 @@ function parseJson(stdout, fallback) {
   }
 }
 
-async function runElevatedJson(innerScript) {
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const scriptPath = path.join(os.tmpdir(), `pla-elevated-${id}.ps1`);
-  const resultPath = path.join(os.tmpdir(), `pla-elevated-${id}.json`);
-  const script = `
-    $ErrorActionPreference = "Stop"
-    try {
-      $result = & {
-${innerScript}
-      }
-      @{ ok = $true; result = $result } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath "${resultPath}" -Encoding UTF8
-    } catch {
-      @{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath "${resultPath}" -Encoding UTF8
-    }
-  `;
-  await fs.promises.writeFile(scriptPath, script, 'utf-8');
-  const launcher = `Start-Process -FilePath powershell.exe -Verb RunAs -Wait -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','${scriptPath}')`;
-  const launched = await execPowerShell(launcher, 300000);
-  if (!launched.ok) return { ok: false, error: launched.error };
-  const parsed = await readJsonObject(resultPath);
-  fs.promises.rm(scriptPath, { force: true }).catch(() => {});
-  fs.promises.rm(resultPath, { force: true }).catch(() => {});
-  return parsed.ok ? { ok: true, result: parsed.result } : { ok: false, error: parsed.error || 'Elevated action failed.' };
+function linesFromText(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function hasAccessDeniedOutput(text) {
+  const lower = String(text || '').toLowerCase();
+  return (
+    lower.includes('administrator privilege') ||
+    lower.includes('0x80070005') ||
+    lower.includes('access is denied') ||
+    lower.includes('failed with hr')
+  );
 }
 
 async function startOfflineScan() {
-  return runElevatedJson('Start-MpWDOScan | Out-Null; "Offline scan scheduled"');
+  const result = await execPowerShell('Start-MpWDOScan | Out-Null; "Offline scan scheduled"', 300000);
+  return result.ok
+    ? { ok: true, result: result.stdout || 'Offline scan scheduled' }
+    : { ok: false, error: result.error || result.stderr || 'Offline scan requires administrator mode.' };
+}
+
+async function listQuarantineDirect(mpCmdRun) {
+  const result = await execFileCapture(mpCmdRun, ['-Restore', '-ListAll'], { timeout: 60000 });
+  const output = [result.stdout, result.stderr, result.error].filter(Boolean).join('\n');
+  return {
+    ok: result.ok && !hasAccessDeniedOutput(output),
+    needsElevation: hasAccessDeniedOutput(output),
+    lines: linesFromText(output),
+  };
 }
 
 async function listThreats() {
+  const mpCmdRun = await resolveMpCmdRun();
   const script = `
     $ErrorActionPreference = "SilentlyContinue"
     [PSCustomObject]@{
       Threats = @(Get-MpThreat | Select-Object ThreatID,ThreatName,SeverityID,CategoryID,DidThreatExecute,IsActive,Resources)
       Detections = @(Get-MpThreatDetection | Select-Object ThreatID,ThreatName,InitialDetectionTime,LastThreatStatusChangeTime,ThreatStatusID,ActionSuccess,Resources)
-      Quarantine = @(& "${await resolveMpCmdRun()}" -Restore -ListAll 2>$null)
     } | ConvertTo-Json -Depth 8
   `;
   const result = await execPowerShell(script, 60000);
   if (!result.ok) return { ok: false, error: result.error };
   const parsed = parseJson(result.stdout, {});
+  let quarantine = mpCmdRun ? await listQuarantineDirect(mpCmdRun) : { ok: true, lines: [] };
+  if (quarantine.needsElevation) {
+    quarantine = {
+      ok: false,
+      lines: ['Quarantine list requires administrator mode. Enable it from Security Center when needed.'],
+    };
+  }
   return {
     ok: true,
     threats: Array.isArray(parsed.Threats) ? parsed.Threats : parsed.Threats ? [parsed.Threats] : [],
@@ -257,29 +284,35 @@ async function listThreats() {
       : parsed.Detections
         ? [parsed.Detections]
         : [],
-    quarantine: Array.isArray(parsed.Quarantine)
-      ? parsed.Quarantine.filter(Boolean)
-      : parsed.Quarantine
-        ? [parsed.Quarantine]
-        : [],
+    quarantine: quarantine.lines,
   };
 }
 
 async function removeThreat() {
-  return runElevatedJson('Remove-MpThreat | Out-Null; "Threat removal requested"');
+  const result = await execPowerShell('Remove-MpThreat | Out-Null; "Threat removal requested"', 300000);
+  return result.ok
+    ? { ok: true, result: result.stdout || 'Threat removal requested' }
+    : { ok: false, error: result.error || result.stderr || 'Threat removal requires administrator mode.' };
 }
 
 async function restoreThreat(payload = {}) {
   const name = String(payload.name || payload.threatName || '').replace(/'/g, "''");
   if (!name) return { ok: false, error: 'Threat name is required.' };
   const mpCmdRun = await resolveMpCmdRun();
-  return runElevatedJson(`& '${mpCmdRun}' -Restore -Name '${name}' | Out-String`);
+  if (!mpCmdRun) return { ok: false, error: 'MpCmdRun.exe was not found.' };
+  const result = await execFileCapture(mpCmdRun, ['-Restore', '-Name', name], { timeout: 300000 });
+  return result.ok
+    ? { ok: true, result: result.stdout || 'Threat restore requested' }
+    : { ok: false, error: result.error || result.stderr || 'Threat restore requires administrator mode.' };
 }
 
 async function allowThreat(payload = {}) {
   const target = String(payload.path || '').replace(/'/g, "''");
   if (!target) return { ok: false, error: 'Path is required.' };
-  return runElevatedJson(`Add-MpPreference -ExclusionPath '${target}' | Out-Null; "Allowed ${target}"`);
+  const result = await execPowerShell(`Add-MpPreference -ExclusionPath '${target}' | Out-Null; "Allowed ${target}"`, 300000);
+  return result.ok
+    ? { ok: true, result: result.stdout || `Allowed ${target}` }
+    : { ok: false, error: result.error || result.stderr || 'Adding exclusions requires administrator mode.' };
 }
 
 async function getReputationCache() {

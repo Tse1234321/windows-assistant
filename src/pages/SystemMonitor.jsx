@@ -350,6 +350,34 @@ export default function SystemMonitor({ onNavigate }) {
             <span>{metrics?.memory?.usagePercent ?? '--'}%</span>
           </div>
           <div className="trend-card">
+            <strong>Network ↓</strong>
+            <Sparkline
+              data={trends}
+              field="netRxKb"
+              max={Math.max(
+                100,
+                metrics?.network?.rxBytesPerSecond
+                  ? Math.round(metrics.network.rxBytesPerSecond / 1024)
+                  : 100,
+              )}
+            />
+            <span>{metrics?.network?.available ? `${metrics.network.rxMbps || 0} Mbps` : '--'}</span>
+          </div>
+          <div className="trend-card">
+            <strong>Network ↑</strong>
+            <Sparkline
+              data={trends}
+              field="netTxKb"
+              max={Math.max(
+                100,
+                metrics?.network?.txBytesPerSecond
+                  ? Math.round(metrics.network.txBytesPerSecond / 1024)
+                  : 100,
+              )}
+            />
+            <span>{metrics?.network?.available ? `${metrics.network.txMbps || 0} Mbps` : '--'}</span>
+          </div>
+          <div className="trend-card">
             <strong>CPU 溫度</strong>
             <Sparkline data={trends} field="cpuTemp" warnAt={82} dangerAt={90} />
             <span>{formatTemp(tempSummary.hottestCpu)}</span>

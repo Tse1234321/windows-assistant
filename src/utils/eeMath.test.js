@@ -7,6 +7,7 @@ import {
   rcFilter,
   rlFilter,
   lcResonance,
+  rlcSeries,
   combineResistors,
   combineCapacitors,
   decodeResistorColors,
@@ -89,6 +90,13 @@ describe('reactive helpers', () => {
 
   it('LC resonance', () => {
     expect(lcResonance(1e-3, 1e-6).f).toBeCloseTo(5032.92, 1);
+  });
+
+  it('series RLC resonance, Q, and bandwidth', () => {
+    const { f0, q, bandwidth } = rlcSeries(1000, 1e-3, 1e-6);
+    expect(f0).toBeCloseTo(5032.92, 1);
+    expect(q).toBeCloseTo(0.03162, 4);
+    expect(bandwidth).toBeCloseTo(159154.94, 1);
   });
 });
 

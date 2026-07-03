@@ -40,7 +40,16 @@ function AppBackground() {
   );
 }
 
-export default function AppShell({ current, onNavigate, onOpenPalette, children }) {
+export default function AppShell({
+  current,
+  onNavigate,
+  onOpenPalette,
+  onBack,
+  onForward,
+  canBack,
+  canForward,
+  children,
+}) {
   const { t } = useLocale();
   return (
     <div className="app-shell">
@@ -51,6 +60,10 @@ export default function AppShell({ current, onNavigate, onOpenPalette, children 
           title={t(PAGE_TITLE_KEYS[current] || 'shell.brandCaption')}
           onOpenPalette={onOpenPalette}
           onNavigate={onNavigate}
+          onBack={onBack}
+          onForward={onForward}
+          canBack={canBack}
+          canForward={canForward}
         />
         <div className="content-scroll">{children}</div>
       </div>

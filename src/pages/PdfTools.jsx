@@ -12,8 +12,8 @@ const consoleStyle = {
   fontFamily: '"Cascadia Code","Consolas",monospace',
   fontSize: 12,
   lineHeight: 1.5,
-  background: '#0d1117',
-  color: '#d6deeb',
+  background: 'color-mix(in srgb, var(--bg-elevated) 86%, var(--bg) 14%)',
+  color: 'var(--text)',
   borderRadius: 10,
   padding: 12,
   height: 200,
@@ -234,7 +234,7 @@ export default function PdfTools() {
                   style={{
                     height: 8,
                     borderRadius: 6,
-                    background: 'var(--surface-2, #1f2937)',
+                    background: 'var(--surface-hover, var(--bg-elevated))',
                     overflow: 'hidden',
                   }}
                 >
@@ -257,7 +257,7 @@ export default function PdfTools() {
             ) : null}
 
             {server.error ? (
-              <div style={{ marginBottom: 12, color: '#ff7b72', fontSize: 13 }}>{server.error}</div>
+              <div style={{ marginBottom: 12, color: 'var(--danger)', fontSize: 13 }}>{server.error}</div>
             ) : null}
 
             {server.starting || (showLogs && logs.length > 0) ? (
@@ -290,7 +290,7 @@ export default function PdfTools() {
             border: '1px solid var(--border)',
             borderRadius: 12,
             overflow: 'hidden',
-            background: '#fff',
+            background: 'var(--bg-card)',
             height: 'calc(100vh - 360px)',
             minHeight: 480,
           }}

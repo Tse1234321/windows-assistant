@@ -20,6 +20,14 @@ const PAGE_COMMANDS = [
     keywords: ['通知', 'notification'],
   },
   {
+    id: 'page.updates',
+    title: 'Open Updates',
+    hint: 'Check app version and update status.',
+    page: 'updates',
+    group: 'System',
+    keywords: ['updates', 'update', 'version'],
+  },
+  {
     id: 'page.history',
     title: '前往活動與復原',
     hint: '整理歷史、清理紀錄、可復原操作',
@@ -108,6 +116,70 @@ const PAGE_COMMANDS = [
     keywords: ['health', '診斷'],
   },
   {
+    id: 'page.security',
+    title: '前往安全性中心',
+    hint: 'Defender、防火牆、TPM 與 BitLocker 狀態',
+    page: 'security',
+    group: '頁面',
+    keywords: ['security', 'defender', '安全', '防毒'],
+  },
+  {
+    id: 'page.workflows',
+    title: '前往視覺化自動化',
+    hint: '節點式自動化流程編輯器',
+    page: 'workflows',
+    group: '頁面',
+    keywords: ['workflow', 'flow', '流程', '節點'],
+  },
+  {
+    id: 'page.rules',
+    title: '前往智慧規則',
+    hint: '自訂檔案分類規則',
+    page: 'rules',
+    group: '頁面',
+    keywords: ['rules', '規則'],
+  },
+  {
+    id: 'page.pdf',
+    title: '前往 PDF 工具',
+    hint: '合併、分割、轉換、壓縮、OCR（本機 Stirling-PDF）',
+    page: 'pdf',
+    group: '頁面',
+    keywords: ['pdf', 'stirling', '合併', '轉換'],
+  },
+  {
+    id: 'page.toolchain',
+    title: '前往工具鏈檢查',
+    hint: 'Arduino、Verilog、VHDL、STM32 等編譯工具狀態',
+    page: 'toolchain',
+    group: '頁面',
+    keywords: ['toolchain', '工具鏈', 'compiler'],
+  },
+  {
+    id: 'page.eeTools',
+    title: '前往電子工具',
+    hint: 'EE 計算器與參考工具',
+    page: 'eeTools',
+    group: '頁面',
+    keywords: ['ee', '電子', 'electronics', '計算'],
+  },
+  {
+    id: 'page.embedded',
+    title: '前往嵌入式實驗室',
+    hint: '編譯、燒錄與序列埠監控',
+    page: 'embedded',
+    group: '頁面',
+    keywords: ['embedded', 'arduino', 'serial', '嵌入式', '燒錄'],
+  },
+  {
+    id: 'page.cheatsheet',
+    title: '前往指令速查',
+    hint: '常用指令備忘',
+    page: 'cheatsheet',
+    group: '頁面',
+    keywords: ['cheatsheet', '速查', 'command'],
+  },
+  {
     id: 'page.settings',
     title: '前往設定中心',
     hint: '路徑、開機喚醒、健康守護、清理與備份',
@@ -117,7 +189,27 @@ const PAGE_COMMANDS = [
   },
 ];
 
-const GROUP_ORDER = ['動作', '頁面', '專案', '工作模式'];
+const GROUP_ORDER = ['最近使用', '動作', '頁面', '專案', '工作模式'];
+const RECENTS_KEY = 'nexus.paletteRecents';
+const RECENTS_MAX = 6;
+
+function loadRecents() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter((id) => typeof id === 'string') : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveRecent(id) {
+  try {
+    const next = [id, ...loadRecents().filter((item) => item !== id)].slice(0, RECENTS_MAX);
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+  } catch (_) {
+    /* non-fatal */
+  }
+}
 
 function getGroupRank(group) {
   const index = GROUP_ORDER.indexOf(group);
@@ -330,14 +422,33 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
       .map((item) => item.command);
   }, [commands, query]);
 
-  const grouped = useMemo(() => groupCommands(filtered), [filtered]);
+  // With an empty query, surface the user's recently used commands first.
+  const withRecents = useMemo(() => {
+    if (query.trim() || !open) return filtered;
+    const byId = new Map(commands.map((command) => [command.id, command]));
+    const recentItems = loadRecents()
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .map((command) => ({
+        ...command,
+        id: `recent.${command.id}`,
+        sourceId: command.id,
+        group: '最近使用',
+      }));
+    return [...recentItems, ...filtered];
+  }, [filtered, commands, query, open]);
+
+  const grouped = useMemo(() => groupCommands(withRecents), [withRecents]);
+  // Flatten in display order so keyboard index and rendered index always agree.
+  const flat = useMemo(() => grouped.flatMap(([, items]) => items), [grouped]);
 
   useEffect(() => {
-    if (active >= filtered.length) setActive(Math.max(filtered.length - 1, 0));
-  }, [filtered, active]);
+    if (active >= flat.length) setActive(Math.max(flat.length - 1, 0));
+  }, [flat, active]);
 
   const run = async (command) => {
     if (!command) return;
+    saveRecent(command.sourceId || command.id);
     onClose();
     try {
       await command.run();
@@ -352,13 +463,13 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
       onClose();
     } else if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setActive((index) => Math.min(index + 1, filtered.length - 1));
+      setActive((index) => Math.min(index + 1, flat.length - 1));
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       setActive((index) => Math.max(index - 1, 0));
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      run(filtered[active]);
+      run(flat[active]);
     }
   };
 
@@ -387,13 +498,13 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
           <span className="palette-shortcut">Enter</span>
         </div>
         <div className="palette-meta">
-          <span>{filtered.length} 個結果</span>
+          <span>{flat.length} 個結果</span>
           <span>方向鍵選擇</span>
           <span>Esc 關閉</span>
         </div>
         <div className="palette-list" role="listbox">
           {loading ? <div className="palette-empty">載入可用命令...</div> : null}
-          {!loading && filtered.length === 0 ? (
+          {!loading && flat.length === 0 ? (
             <div className="palette-empty">找不到符合的命令</div>
           ) : null}
           {!loading &&

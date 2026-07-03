@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { formatBytes } from '../../utils/format.js';
 import { useLocale } from '../../i18n.jsx';
+import { useTheme } from '../../theme/ThemeProvider.jsx';
 
 const STATUS_ORDER = { danger: 4, warning: 3, normal: 2, good: 1 };
 
@@ -19,6 +20,21 @@ const TYPE_COLORS = {
   system: 0x22d3ee,
   cleanup: 0xd946ef,
   automation: 0x22d3ee,
+};
+
+const LIGHT_STATUS_COLORS = {
+  good: 0x0ea5a4,
+  normal: 0x2563eb,
+  warning: 0xd97706,
+  danger: 0xe11d48,
+};
+
+const LIGHT_TYPE_COLORS = {
+  file: 0x2563eb,
+  project: 0x0891b2,
+  system: 0x0284c7,
+  cleanup: 0x059669,
+  automation: 0x0ea5a4,
 };
 
 function hash(input) {
@@ -43,28 +59,36 @@ function sphericalPosition(index, total, seed, radius = 2.34) {
   );
 }
 
-function makeGlowTexture() {
+function makeGlowTexture(isLightTheme = false) {
   const canvas = document.createElement('canvas');
   canvas.width = 96;
   canvas.height = 96;
   const ctx = canvas.getContext('2d');
   const gradient = ctx.createRadialGradient(48, 48, 0, 48, 48, 48);
-  gradient.addColorStop(0, 'rgba(255,255,255,0.95)');
-  gradient.addColorStop(0.18, 'rgba(56,189,248,0.72)');
-  gradient.addColorStop(0.52, 'rgba(168,85,247,0.28)');
-  gradient.addColorStop(0.72, 'rgba(217,70,239,0.18)');
-  gradient.addColorStop(1, 'rgba(56,189,248,0)');
+  if (isLightTheme) {
+    gradient.addColorStop(0, 'rgba(255,255,255,0.9)');
+    gradient.addColorStop(0.2, 'rgba(37,99,235,0.42)');
+    gradient.addColorStop(0.52, 'rgba(14,165,233,0.2)');
+    gradient.addColorStop(0.78, 'rgba(45,212,191,0.12)');
+    gradient.addColorStop(1, 'rgba(37,99,235,0)');
+  } else {
+    gradient.addColorStop(0, 'rgba(255,255,255,0.95)');
+    gradient.addColorStop(0.18, 'rgba(56,189,248,0.72)');
+    gradient.addColorStop(0.52, 'rgba(168,85,247,0.28)');
+    gradient.addColorStop(0.72, 'rgba(217,70,239,0.18)');
+    gradient.addColorStop(1, 'rgba(56,189,248,0)');
+  }
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 96, 96);
   return new THREE.CanvasTexture(canvas);
 }
 
-function makeCityPoints(count = 1100, radius = 2.365) {
+function makeCityPoints(count = 1100, radius = 2.365, isLightTheme = false) {
   const positions = [];
   const colors = [];
-  const cyan = new THREE.Color(0x67e8f9);
-  const violet = new THREE.Color(0xa78bfa);
-  const magenta = new THREE.Color(0xd946ef);
+  const primary = new THREE.Color(isLightTheme ? 0x2563eb : 0x67e8f9);
+  const secondary = new THREE.Color(isLightTheme ? 0x0ea5e9 : 0xa78bfa);
+  const accent = new THREE.Color(isLightTheme ? 0x14b8a6 : 0xd946ef);
 
   for (let index = 0; index < count; index += 1) {
     const vec = sphericalPosition(index, count, index * 31, radius);
@@ -72,8 +96,10 @@ function makeCityPoints(count = 1100, radius = 2.365) {
     const band = Math.abs(Math.sin(vec.x * 1.8 + vec.y * 3.2 + vec.z * 0.7));
     if (band < 0.25 && index % 3 !== 0) continue;
     positions.push(vec.x, vec.y, vec.z);
-    const color = index % 13 === 0 ? magenta : index % 5 === 0 ? violet : cyan;
-    const strength = 0.45 + (Math.abs(noise) % 0.55);
+    const color = index % 13 === 0 ? accent : index % 5 === 0 ? secondary : primary;
+    const strength = isLightTheme
+      ? 0.38 + (Math.abs(noise) % 0.38)
+      : 0.45 + (Math.abs(noise) % 0.55);
     colors.push(color.r * strength, color.g * strength, color.b * strength);
   }
 
@@ -148,6 +174,8 @@ export default function DashboardGlobe({
   onNodeOpen,
 }) {
   const { t } = useLocale();
+  const themeCtx = useTheme();
+  const isLightTheme = themeCtx?.theme === 'light';
   const stageRef = useRef(null);
   const selectedNodeIdRef = useRef(selectedNode?.id || null);
   const [hasWebGl, setHasWebGl] = useState(true);
@@ -211,27 +239,34 @@ export default function DashboardGlobe({
     root.rotation.set(-0.12, -0.4, 0.02);
     scene.add(root);
 
-    scene.add(new THREE.AmbientLight(0x8bdfff, 0.76));
-    const keyLight = new THREE.DirectionalLight(0x67e8f9, 2.2);
+    const statusColors = isLightTheme ? LIGHT_STATUS_COLORS : STATUS_COLORS;
+    const typeColors = isLightTheme ? LIGHT_TYPE_COLORS : TYPE_COLORS;
+    const selectedColor = isLightTheme ? 0xffffff : 0xe0fbff;
+    const haloColor = isLightTheme ? 0x2563eb : 0x67e8f9;
+    const linkPrimary = isLightTheme ? 0x2563eb : 0x22d3ee;
+    const linkSecondary = isLightTheme ? 0x0ea5e9 : 0xa78bfa;
+
+    scene.add(new THREE.AmbientLight(isLightTheme ? 0xd9ecff : 0x8bdfff, isLightTheme ? 1.08 : 0.76));
+    const keyLight = new THREE.DirectionalLight(isLightTheme ? 0xffffff : 0x67e8f9, isLightTheme ? 2.45 : 2.2);
     keyLight.position.set(-3, 3, 5);
     scene.add(keyLight);
-    const rimLight = new THREE.PointLight(0x38bdf8, 8.5, 8);
+    const rimLight = new THREE.PointLight(isLightTheme ? 0x60a5fa : 0x38bdf8, isLightTheme ? 5.4 : 8.5, 8);
     rimLight.position.set(0, -0.4, 3.3);
     scene.add(rimLight);
-    const purpleRimLight = new THREE.PointLight(0xd946ef, 6.8, 8);
+    const purpleRimLight = new THREE.PointLight(isLightTheme ? 0x2dd4bf : 0xd946ef, isLightTheme ? 3.8 : 6.8, 8);
     purpleRimLight.position.set(2.8, 1.2, 2.8);
     scene.add(purpleRimLight);
 
     const globeGeometry = new THREE.SphereGeometry(2.22, 96, 96);
     const globeMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0x080f35,
-      emissive: 0x24115f,
-      emissiveIntensity: 0.78,
-      roughness: 0.36,
-      metalness: 0.05,
-      transmission: 0.18,
+      color: isLightTheme ? 0x9fc7f5 : 0x080f35,
+      emissive: isLightTheme ? 0x2f7be8 : 0x24115f,
+      emissiveIntensity: isLightTheme ? 0.22 : 0.78,
+      roughness: isLightTheme ? 0.42 : 0.36,
+      metalness: isLightTheme ? 0.02 : 0.05,
+      transmission: isLightTheme ? 0.38 : 0.18,
       transparent: true,
-      opacity: 0.88,
+      opacity: isLightTheme ? 0.58 : 0.88,
       depthWrite: false,
     });
     const globe = new THREE.Mesh(globeGeometry, globeMaterial);
@@ -239,17 +274,21 @@ export default function DashboardGlobe({
 
     const wire = new THREE.LineSegments(
       new THREE.WireframeGeometry(new THREE.SphereGeometry(2.235, 36, 20)),
-      new THREE.LineBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.18 }),
+      new THREE.LineBasicMaterial({
+        color: isLightTheme ? 0x2563eb : 0x67e8f9,
+        transparent: true,
+        opacity: isLightTheme ? 0.13 : 0.18,
+      }),
     );
     root.add(wire);
 
     const rim = new THREE.Mesh(
       new THREE.SphereGeometry(2.285, 96, 96),
       new THREE.MeshBasicMaterial({
-        color: 0x10d9ff,
+        color: isLightTheme ? 0x60a5fa : 0x10d9ff,
         side: THREE.BackSide,
         transparent: true,
-        opacity: 0.22,
+        opacity: isLightTheme ? 0.13 : 0.22,
         blending: THREE.AdditiveBlending,
       }),
     );
@@ -258,10 +297,10 @@ export default function DashboardGlobe({
     const purpleRim = new THREE.Mesh(
       new THREE.SphereGeometry(2.33, 96, 96),
       new THREE.MeshBasicMaterial({
-        color: 0xa855f7,
+        color: isLightTheme ? 0x2dd4bf : 0xa855f7,
         side: THREE.BackSide,
         transparent: true,
-        opacity: 0.15,
+        opacity: isLightTheme ? 0.08 : 0.15,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
@@ -269,11 +308,11 @@ export default function DashboardGlobe({
     root.add(purpleRim);
 
     const cityPoints = new THREE.Points(
-      makeCityPoints(),
+      makeCityPoints(1100, 2.365, isLightTheme),
       new THREE.PointsMaterial({
-        size: 0.014,
+        size: isLightTheme ? 0.012 : 0.014,
         transparent: true,
-        opacity: 0.9,
+        opacity: isLightTheme ? 0.72 : 0.9,
         vertexColors: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
@@ -295,16 +334,16 @@ export default function DashboardGlobe({
     const bgParticles = new THREE.Points(
       bgGeometry,
       new THREE.PointsMaterial({
-        color: 0x4cc9ff,
+        color: isLightTheme ? 0x2563eb : 0x4cc9ff,
         size: 0.025,
         transparent: true,
-        opacity: 0.48,
+        opacity: isLightTheme ? 0.2 : 0.48,
         blending: THREE.AdditiveBlending,
       }),
     );
     scene.add(bgParticles);
 
-    const glowTexture = makeGlowTexture();
+    const glowTexture = makeGlowTexture(isLightTheme);
     const maxValue = Math.max(1, ...displayNodes.map(getNodeValue));
     const nodeMeshes = [];
     const selectedHaloSprites = [];
@@ -321,7 +360,7 @@ export default function DashboardGlobe({
       const value = getNodeValue(node);
       const normalized = Math.sqrt(value / maxValue);
       const radius = 0.07 + normalized * 0.12;
-      const color = STATUS_COLORS[node.status] || TYPE_COLORS[node.type] || 0x38bdf8;
+      const color = statusColors[node.status] || typeColors[node.type] || 0x38bdf8;
 
       const group = new THREE.Group();
       group.position.copy(position);
@@ -355,7 +394,7 @@ export default function DashboardGlobe({
         const halo = new THREE.Sprite(
           new THREE.SpriteMaterial({
             map: glowTexture,
-            color: 0x67e8f9,
+            color: haloColor,
             transparent: true,
             opacity: 0,
             blending: THREE.AdditiveBlending,
@@ -381,9 +420,9 @@ export default function DashboardGlobe({
       if (!next || next.node.id === entry.node.id) return;
       const arc = makeArc(entry.position, next.position);
       const material = new THREE.LineBasicMaterial({
-        color: index % 5 === 0 ? 0xa78bfa : 0x22d3ee,
+        color: index % 5 === 0 ? linkSecondary : linkPrimary,
         transparent: true,
-        opacity: 0.24,
+        opacity: isLightTheme ? 0.16 : 0.24,
         blending: THREE.AdditiveBlending,
       });
       const line = new THREE.Line(arc.geometry, material);
@@ -398,17 +437,24 @@ export default function DashboardGlobe({
     });
 
     const orbitGroup = new THREE.Group();
-    [
-      { radius: 2.72, yScale: 0.38, rot: [0.1, 0.4, 0.1], color: 0x22d3ee },
-      { radius: 2.9, yScale: 0.26, rot: [0.82, -0.32, 0.45], color: 0x3b82f6 },
-      { radius: 3.06, yScale: 0.44, rot: [-0.42, 0.95, -0.18], color: 0xa78bfa },
-    ].forEach((orbit) => {
+    const orbits = isLightTheme
+      ? [
+          { radius: 2.72, yScale: 0.38, rot: [0.1, 0.4, 0.1], color: 0x2563eb },
+          { radius: 2.9, yScale: 0.26, rot: [0.82, -0.32, 0.45], color: 0x0ea5e9 },
+          { radius: 3.06, yScale: 0.44, rot: [-0.42, 0.95, -0.18], color: 0x14b8a6 },
+        ]
+      : [
+          { radius: 2.72, yScale: 0.38, rot: [0.1, 0.4, 0.1], color: 0x22d3ee },
+          { radius: 2.9, yScale: 0.26, rot: [0.82, -0.32, 0.45], color: 0x3b82f6 },
+          { radius: 3.06, yScale: 0.44, rot: [-0.42, 0.95, -0.18], color: 0xa78bfa },
+        ];
+    orbits.forEach((orbit) => {
       const ring = new THREE.Line(
         makeOrbit(orbit.radius, orbit.yScale),
         new THREE.LineBasicMaterial({
           color: orbit.color,
           transparent: true,
-          opacity: 0.26,
+          opacity: isLightTheme ? 0.18 : 0.26,
           blending: THREE.AdditiveBlending,
         }),
       );
@@ -558,7 +604,7 @@ export default function DashboardGlobe({
         if (isSelected) {
           const beat = (Math.sin(seconds * 4.2) + 1) / 2;
           mesh.scale.setScalar(1.48 + beat * 0.28);
-          material.color.setHex(0xe0fbff);
+          material.color.setHex(selectedColor);
           material.opacity = 1;
           if (sprite) {
             sprite.material.opacity = 1;
@@ -634,7 +680,7 @@ export default function DashboardGlobe({
       renderer.dispose();
       if (renderer.domElement.parentNode === stage) stage.removeChild(renderer.domElement);
     };
-  }, [displayNodes, onNodeClear, onNodeSelect]);
+  }, [displayNodes, isLightTheme, onNodeClear, onNodeSelect]);
 
   const tooltipNode = hovered?.node;
   const selected = selectedNode;
@@ -691,7 +737,7 @@ export default function DashboardGlobe({
 
       {tooltipNode ? (
         <div
-          className="globe-tooltip globe-tooltip-dark"
+          className={`globe-tooltip${isLightTheme ? '' : ' globe-tooltip-dark'}`}
           style={{
             left: `${Math.min(Math.max(hovered.x + 16, 18), Math.max(18, (stageRef.current?.clientWidth || 360) - 230))}px`,
             top: `${Math.min(Math.max(hovered.y - 16, 18), Math.max(18, (stageRef.current?.clientHeight || 420) - 140))}px`,

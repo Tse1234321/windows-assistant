@@ -34,6 +34,7 @@ const updateService = require('./services/updateService');
 const cleanupService = require('./services/cleanupService');
 const securityService = require('./services/securityService');
 const antivirusService = require('./services/antivirusService');
+const adminLaunchService = require('./services/adminLaunchService');
 const onboardingService = require('./services/onboardingService');
 const activityHistoryService = require('./services/activityHistoryService');
 const healthGuardService = require('./services/healthGuardService');
@@ -42,6 +43,7 @@ const buildService = require('./services/buildService');
 const serialService = require('./services/serialService');
 const dashboardService = require('./services/dashboardService');
 const overlayMetricsService = require('./services/overlayMetricsService');
+const stirlingService = require('./services/stirlingService');
 const { logger } = require('./services/loggerService');
 
 const isDev = !app.isPackaged;
@@ -119,6 +121,8 @@ function configureAutoLaunch() {
 }
 
 // --- File monitoring (watcher → notifications + automations + renderer event) ---
+let autoOrganizeTimer = null;
+
 function monitorFolders(config) {
   const g = (config && config.general) || {};
   const folders = [];
@@ -143,10 +147,47 @@ function monitorFolders(config) {
   return folders;
 }
 
+function scheduleAutoOrganize(info, config) {
+  const g = (config && config.general) || {};
+  if (g.autoOrganizeDownloads !== true) return;
+  const rootPath = g.downloadsPath || info.folder;
+  if (!rootPath) return;
+  if (autoOrganizeTimer) clearTimeout(autoOrganizeTimer);
+  const delayMs = Math.max(15, Number(g.autoOrganizeDelaySeconds || 45)) * 1000;
+  autoOrganizeTimer = setTimeout(async () => {
+    try {
+      const latest = loadConfig();
+      const latestGeneral = latest.general || {};
+      if (latestGeneral.autoOrganizeDownloads !== true) return;
+      const latestRoot = latestGeneral.downloadsPath || rootPath;
+      if (latestGeneral.askBeforeOrganizing !== false) {
+        notificationService.notify(
+          'Downloads organizer',
+          'New files have settled. Review Downloads when you are ready.',
+          { level: 'info', source: 'automation', action: 'files' },
+        );
+        return;
+      }
+      const result = await automationService.runAction(
+        { type: 'organizeFileByType', rootPath: latestRoot },
+        { file: '', path: '', folder: latestRoot, ext: '', size: 0 },
+        latest,
+      );
+      writeLog('info', `auto-organize downloads: ${JSON.stringify(result)}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:automation-fired', [{ action: 'files', ...result }]);
+      }
+    } catch (err) {
+      writeLog('error', `auto-organize downloads failed: ${err.message}`);
+    }
+  }, delayMs);
+}
+
 async function onNewFile(info) {
   try {
     const config = loadConfig();
     const g = config.general || {};
+    scheduleAutoOrganize(info, config);
     if (g.notifications !== false) {
       notificationService.notify('偵測到新檔案', `${info.file}（${path.basename(info.folder)}）`);
     }
@@ -184,6 +225,7 @@ function startMonitoring() {
 }
 
 let workflowScheduleTimer = null;
+let cleanupScheduleTimer = null;
 // Find an enabled workflow's schedule trigger that is currently due (reusing the
 // flat-automation timing + dedupe), so scheduled workflows don't fire every tick.
 function dueScheduleTrigger(workflow) {
@@ -212,6 +254,50 @@ async function runScheduledWorkflows() {
   }
 }
 
+function cleanupScheduleCondition(schedule = {}) {
+  const frequency = schedule.frequency || 'daily';
+  if (frequency === 'weekly') {
+    const days = Array.isArray(schedule.days) && schedule.days.length ? schedule.days : [1];
+    return {
+      scheduleMode: 'weekly',
+      time: schedule.time || '09:00',
+      days,
+      dayOfWeek: Number(days[0]),
+    };
+  }
+  return { scheduleMode: 'daily', time: schedule.time || '09:00', days: schedule.days || [] };
+}
+
+async function runScheduledCleanup() {
+  const config = loadConfig();
+  const schedule = config.cleanup?.schedule || {};
+  if (schedule.enabled !== true) return;
+  const condition = cleanupScheduleCondition(schedule);
+  if (!automationService.scheduleDueFor('cleanup:scheduledScan', condition)) return;
+  automationService.markScheduleFired('cleanup:scheduledScan');
+  try {
+    const scan = await cleanupService.scan({ settings: { scanDuplicateFiles: false } });
+    const safe = (scan.items || []).filter((item) => item.selectedDefault);
+    const size = safe.reduce((sum, item) => sum + Number(item.size || 0), 0);
+    let cleaned = null;
+    if (schedule.autoCleanSafe === true && safe.length) {
+      cleaned = await cleanupService.cleanSelectedFiles(safe, {});
+    }
+    if (schedule.notify !== false) {
+      notificationService.notify(
+        'Clean Center scheduled scan',
+        cleaned
+          ? `Cleaned ${cleaned.cleaned || 0} safe item(s), ${(cleaned.freedSize / 1024 / 1024).toFixed(1)} MB.`
+          : `Found ${safe.length} safe item(s), ${(size / 1024 / 1024).toFixed(1)} MB.`,
+        { level: safe.length ? 'info' : 'ok', source: 'automation', action: 'cleanup' },
+      );
+    }
+    writeLog('info', `scheduled cleanup scan: ${JSON.stringify({ safe: safe.length, cleaned })}`);
+  } catch (err) {
+    writeLog('error', `scheduled cleanup failed: ${err.message}`);
+  }
+}
+
 function startBackgroundServices() {
   const getConfig = () => loadConfig();
   healthGuardService.start(getConfig, { runNow: true });
@@ -224,6 +310,9 @@ function startBackgroundServices() {
   // Separate minute-cadence tick for schedule-triggered visual workflows.
   if (workflowScheduleTimer) clearInterval(workflowScheduleTimer);
   workflowScheduleTimer = setInterval(() => runScheduledWorkflows().catch(() => {}), 60 * 1000);
+  if (cleanupScheduleTimer) clearInterval(cleanupScheduleTimer);
+  cleanupScheduleTimer = setInterval(() => runScheduledCleanup().catch(() => {}), 60 * 1000);
+  setTimeout(() => runScheduledCleanup().catch(() => {}), 5000);
 }
 
 function recordHistory(batch) {
@@ -283,6 +372,8 @@ function createWindow(showOnReady = true) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // The PDF Tools page embeds the local Stirling-PDF UI in a <webview>.
+      webviewTag: true,
     },
   });
 
@@ -836,6 +927,29 @@ function registerIpc() {
   );
   ipcMain.handle('build:cancel', async () => buildService.cancelBuild());
 
+  // PDF Tools — Stirling-PDF runtime/JAR provisioning + local server lifecycle.
+  ipcMain.handle('stirling:getStatus', async () => stirlingService.getStatus());
+  ipcMain.handle('stirling:downloadJre', async () =>
+    stirlingService.downloadJre((progress) => sendToRenderer('stirling:progress', progress)),
+  );
+  ipcMain.handle('stirling:downloadJar', async () =>
+    stirlingService.downloadJar((progress) => sendToRenderer('stirling:progress', progress)),
+  );
+  ipcMain.handle('stirling:start', async (_event, options = {}) =>
+    stirlingService.start(
+      options,
+      (line) => sendToRenderer('stirling:log', line),
+      (state) => sendToRenderer('stirling:status', state),
+    ),
+  );
+  ipcMain.handle('stirling:stop', async () => stirlingService.stop());
+  ipcMain.handle('stirling:openExternal', async () => {
+    const status = await stirlingService.getStatus();
+    const url = status.server && status.server.url;
+    if (url) shell.openExternal(url);
+    return { ok: !!url };
+  });
+
   // Serial Monitor — list ports and stream incoming data.
   ipcMain.handle('serial:listPorts', async () => serialService.listPorts());
   ipcMain.handle('serial:open', async (_event, payload = {}) =>
@@ -1308,6 +1422,12 @@ function registerIpc() {
     antivirusService.saveSettings(settings),
   );
 
+  // --- Administrator launch mode ---
+  ipcMain.handle('adminLaunch:getStatus', async () => adminLaunchService.getStatus());
+  ipcMain.handle('adminLaunch:enable', async () => adminLaunchService.enable());
+  ipcMain.handle('adminLaunch:disable', async () => adminLaunchService.disable());
+  ipcMain.handle('adminLaunch:launchElevated', async () => adminLaunchService.launchElevated());
+
   // --- Screenshot Organizer ---
   ipcMain.handle('screenshots:getSettings', async () => {
     const config = loadConfig();
@@ -1671,4 +1791,10 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  // Don't leave the Stirling-PDF Java server orphaned after the app exits.
+  try {
+    stirlingService.stop();
+  } catch (_) {
+    /* ignore */
+  }
 });

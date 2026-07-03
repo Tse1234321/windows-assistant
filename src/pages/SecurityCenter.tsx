@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Button from '../components/Button.jsx';
 import DataTable from '../components/DataTable.jsx';
+import Dialog from '../components/Dialog.jsx';
 import InlineAlert from '../components/InlineAlert.jsx';
 import PageHeader from '../components/PageHeader.jsx';
 import SectionPanel from '../components/SectionPanel.jsx';
@@ -303,6 +304,14 @@ export default function SecurityCenter() {
   const [reputation, setReputation] = useState<any>(null);
   const [vtKey, setVtKey] = useState('');
   const [settings, setSettings] = useState<any>(null);
+  const [adminLaunch, setAdminLaunch] = useState<any>(null);
+  const [adminLaunchBusy, setAdminLaunchBusy] = useState(false);
+  const [adminLaunchConfirm, setAdminLaunchConfirm] = useState<boolean | null>(null);
+
+  const refreshAdminLaunch = useCallback(async () => {
+    const result = await window.api?.adminLaunch?.getStatus?.();
+    if (result?.ok) setAdminLaunch(result);
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -326,6 +335,10 @@ export default function SecurityCenter() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    refreshAdminLaunch();
+  }, [refreshAdminLaunch]);
 
   useEffect(() => {
     const offProgress = window.api?.antivirus?.onScanProgress?.((progress: any) =>
@@ -452,6 +465,27 @@ export default function SecurityCenter() {
     if (!hashOrPath.trim()) return;
     const result = await window.api?.antivirus?.checkReputation?.(hashOrPath.trim());
     setReputation(result);
+  };
+
+  const setAdminLaunchMode = async (enabled: boolean) => {
+    setAdminLaunchConfirm(null);
+    setAdminLaunchBusy(true);
+    const result = enabled
+      ? await window.api?.adminLaunch?.enable?.()
+      : await window.api?.adminLaunch?.disable?.();
+    setAdminLaunchBusy(false);
+    if (result?.ok) {
+      setAdminLaunch(result);
+      toast(enabled ? '管理員啟動模式已開啟' : '管理員啟動模式已關閉', 'ok');
+    } else {
+      toast(result?.error || '管理員啟動模式更新失敗', 'error');
+      refreshAdminLaunch();
+    }
+  };
+
+  const launchElevated = async () => {
+    const result = await window.api?.adminLaunch?.launchElevated?.();
+    if (!result?.ok) toast(result?.error || '無法以管理員身分重新啟動', 'error');
   };
 
   const openSettings = (url?: string) => {
@@ -730,6 +764,70 @@ export default function SecurityCenter() {
           </div>
         ) : null}
       </UISectionPanel>
+
+      <UISectionPanel title="管理員啟動模式" description="建立專用高權限啟動入口；開啟與關閉時需要確認一次。">
+        <div className="vt-settings">
+          <div>
+            <strong>
+              {adminLaunch?.isElevated
+                ? '目前已是系統管理員身份'
+                : adminLaunch?.enabled
+                  ? '日後可用 Admin 捷徑以管理員身份啟動'
+                  : '目前以一般權限執行'}
+            </strong>
+            <span>
+              {adminLaunch?.enabled
+                ? `已建立排程工作：${adminLaunch.taskName || 'PC Life Assistant Elevated'}`
+                : '開啟後會把桌面與開始功能表捷徑改成高權限啟動入口。'}
+            </span>
+            {adminLaunch?.enabled ? (
+              <span>
+                原本捷徑 {adminLaunch?.shortcuts?.desktop || adminLaunch?.shortcuts?.startMenu ? '已更新' : '未找到'}；Admin 備用捷徑{' '}
+                {adminLaunch?.shortcuts?.adminDesktop || adminLaunch?.shortcuts?.adminStartMenu ? '已建立' : '未找到'}
+              </span>
+            ) : null}
+          </div>
+          <div className="scan-button-row">
+            <UIButton
+              busy={adminLaunchBusy}
+              variant={adminLaunch?.enabled ? 'ghost' : 'primary'}
+              onClick={() => setAdminLaunchConfirm(!adminLaunch?.enabled)}
+            >
+              {adminLaunch?.enabled ? '關閉管理員啟動' : '開啟管理員啟動'}
+            </UIButton>
+            <UIButton
+              variant="ghost"
+              disabled={!adminLaunch?.enabled || adminLaunch?.isElevated}
+              onClick={launchElevated}
+            >
+              重新以管理員開啟
+            </UIButton>
+            <UIButton variant="ghost" onClick={refreshAdminLaunch}>
+              重新檢查
+            </UIButton>
+          </div>
+        </div>
+        <InlineAlert tone="warn" title="安全提醒">
+          這個模式會讓指定捷徑啟動本程式時直接取得系統管理員權限；只在你信任這台電腦與此安裝路徑時開啟。
+        </InlineAlert>
+      </UISectionPanel>
+
+      <Dialog
+        open={adminLaunchConfirm !== null}
+        title={adminLaunchConfirm ? '開啟管理員啟動模式' : '關閉管理員啟動模式'}
+        message={
+          adminLaunchConfirm
+            ? '按下確認後會出現 Windows 系統管理員確認視窗，用來建立高權限啟動入口。'
+            : '按下確認後會出現 Windows 系統管理員確認視窗，用來移除高權限啟動入口並還原捷徑。'
+        }
+        confirmLabel="確認"
+        cancelLabel="取消"
+        danger={adminLaunchConfirm === false}
+        onCancel={() => setAdminLaunchConfirm(null)}
+        onConfirm={() => {
+          if (adminLaunchConfirm !== null) setAdminLaunchMode(adminLaunchConfirm);
+        }}
+      />
 
       <UISectionPanel title="VirusTotal 檔案信譽">
         <div className="vt-settings">

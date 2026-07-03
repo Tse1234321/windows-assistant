@@ -42,6 +42,20 @@ describe('scheduleDueFor (scheduled-workflow timing + dedupe)', () => {
     expect(scheduleDueFor(key, { scheduleMode: 'daily', time: '09:00' }, at('10:00'))).toBe(false);
   });
 
+  it('infers daily mode when a schedule has time but no interval', () => {
+    const key = 'test-daily-fallback';
+    const at = (hhmm) => new Date(`2024-01-01T${hhmm}:00`);
+    expect(scheduleDueFor(key, { time: '09:00' }, at('09:00'))).toBe(true);
+    expect(scheduleDueFor(`${key}-b`, { time: '09:00' }, at('09:03'))).toBe(false);
+  });
+
+  it('honors selected weekdays for daily schedules', () => {
+    const monday = new Date('2024-01-01T09:00:00');
+    const tuesday = new Date('2024-01-02T09:00:00');
+    expect(scheduleDueFor('test-days-1', { scheduleMode: 'daily', time: '09:00', days: [1] }, monday)).toBe(true);
+    expect(scheduleDueFor('test-days-2', { scheduleMode: 'daily', time: '09:00', days: [1] }, tuesday)).toBe(false);
+  });
+
   it('weekly mode: only fires on the configured day of week', () => {
     const key = 'test-weekly-1';
     // 2024-01-01 is a Monday (getDay() === 1)

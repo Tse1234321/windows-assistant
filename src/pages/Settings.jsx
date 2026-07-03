@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Button from '../components/Button.jsx';
 import Card from '../components/Card.jsx';
 import Dialog from '../components/Dialog.jsx';
+import InlineAlert from '../components/InlineAlert.jsx';
 import PageHeader from '../components/PageHeader.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Toggle from '../components/Toggle.jsx';
@@ -13,10 +14,10 @@ const inputStyle = {
   background: 'var(--input-bg)',
   color: 'var(--input-text)',
   border: '1px solid var(--border)',
-  borderRadius: 8,
-  padding: '9px 11px',
-  fontSize: 13,
-  fontFamily: '"Cascadia Code","Consolas",monospace',
+  borderRadius: 'var(--r-control)',
+  padding: '8px 12px',
+  fontSize: 'var(--fs-small)',
+  fontFamily: 'var(--font-data)',
   flex: 1,
   minWidth: 220,
 };
@@ -27,6 +28,7 @@ const CATEGORIES = [
   { key: 'startup', label: '開機/喚醒', icon: 'ST' },
   { key: 'guard', label: '監控守護', icon: 'HG' },
   { key: 'overlay', label: 'Overlay', icon: 'OS' },
+  { key: 'projects', label: 'Projects', icon: 'PH' },
   { key: 'cleanup', label: '清理', icon: 'CC' },
   { key: 'automation', label: '自動化', icon: 'AU' },
   { key: 'backup', label: '備份/還原', icon: 'BK' },
@@ -50,28 +52,36 @@ export default function Settings() {
   const { toast } = useToast();
   const { theme, setTheme, accent, setAccent, compact, setCompact } = useTheme();
   const { language, setLanguage, t } = useLocale();
+  const api = typeof window !== 'undefined' ? window.api : undefined;
+  const apiAvailable = !!api?.getSettings;
+  const zh = language === 'zh';
   const [category, setCategory] = useState('general');
   const [settings, setSettings] = useState(null);
   const [autoLaunchSupported, setAutoLaunchSupported] = useState(true);
   const [confirmReset, setConfirmReset] = useState(false);
   const [configPath, setConfigPath] = useState('');
+  const [systemStatus, setSystemStatus] = useState(null);
 
   const general = settings?.general || {};
   const guard = settings?.healthGuard || {};
   const cleanup = settings?.cleanup || {};
   const overlay = settings?.overlay || {};
+  const projectHub = settings?.projectHub || {};
 
-  const load = async () => {
-    const result = await window.api.getSettings();
+  const load = useCallback(async () => {
+    if (!apiAvailable) return;
+    const result = await api.getSettings();
     setSettings(result.settings);
     setConfigPath(result.path || '');
-    const autoLaunch = await window.api.getAutoLaunch();
+    const autoLaunch = await api.getAutoLaunch();
     if (autoLaunch?.ok) setAutoLaunchSupported(autoLaunch.supported);
-  };
+    const status = await api.getSystemStatus?.();
+    if (status?.ok) setSystemStatus(status);
+  }, [api, apiAvailable]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const saveAll = async (next) => {
     setSettings(next);
@@ -92,6 +102,44 @@ export default function Settings() {
       const current = await window.api.cleanup.getSettings();
       await window.api.cleanup.saveSettings({ ...(current.settings || {}), ...patch });
     }
+  };
+
+  const saveProjectHub = async (patch) => {
+    const nextHub = { ...projectHub, ...patch };
+    const next = { ...settings, projectHub: nextHub };
+    setSettings(next);
+    const result = await window.api.saveProjectHubSettings?.(nextHub);
+    if (!result?.ok) toast(result?.error || 'Project Hub settings save failed', 'error');
+    else if (result.projectHub) setSettings({ ...next, projectHub: result.projectHub });
+  };
+
+  const pickProjectRoot = async () => {
+    const picked = await window.api.pickPath({ type: 'folder', title: 'Add Project Hub root' });
+    if (!picked?.ok || !picked.path) return;
+    const result = await window.api.addProjectScanRoot?.(picked.path);
+    if (result?.projectHub) setSettings({ ...settings, projectHub: result.projectHub });
+  };
+
+  const removeProjectRoot = async (root) => {
+    const result = await window.api.removeProjectScanRoot?.(root);
+    if (result?.projectHub) setSettings({ ...settings, projectHub: result.projectHub });
+  };
+
+  const toggleMonitorDrive = async (drive) => {
+    const current = Array.isArray(general.monitorDrives) ? general.monitorDrives : [];
+    const next = current.includes(drive)
+      ? current.filter((item) => item !== drive)
+      : [...current, drive];
+    await saveGeneral({ monitorDrives: next, monitorDrive: next[0] || '' });
+  };
+
+  const toggleCleanupDay = async (day) => {
+    const schedule = cleanup.schedule || {};
+    const current = Array.isArray(schedule.days) ? schedule.days : [];
+    const days = current.includes(day)
+      ? current.filter((item) => item !== day)
+      : [...current, day].sort((a, b) => a - b);
+    await saveCleanup({ schedule: { ...schedule, days } });
   };
 
   const saveGuard = async (patch) => {
@@ -169,6 +217,29 @@ export default function Settings() {
     if (result.ok) load();
   };
 
+  if (!apiAvailable) {
+    return (
+      <div>
+        <PageHeader
+          eyebrow="PREFERENCES"
+          title={zh ? '設定中心' : 'Settings'}
+          description={
+            zh
+              ? '設定需要 Electron preload 提供的桌面 API。'
+              : 'Settings require the desktop API exposed by Electron preload.'
+          }
+        />
+        <Card title={zh ? '桌面 API 無法使用' : 'Desktop API unavailable'}>
+          <InlineAlert tone="warn" title="Electron IPC unavailable">
+            {zh
+              ? '目前是在瀏覽器 renderer 中預覽。請啟動 Electron app 來讀取、修改與儲存本機設定。'
+              : 'This is the browser renderer preview. Start the Electron app to read, change, and save local settings.'}
+          </InlineAlert>
+        </Card>
+      </div>
+    );
+  }
+
   if (!settings) {
     return (
       <div className="loading-block">
@@ -209,6 +280,16 @@ export default function Settings() {
         <div className="settings-content">
           {category === 'general' ? (
             <Card title="一般">
+              <Row label="使用者名稱" desc="顯示在右上角個人按鈕。">
+                <input
+                  style={inputStyle}
+                  value={general.displayName || general.userName || 'User'}
+                  maxLength={32}
+                  onChange={(event) =>
+                    saveGeneral({ displayName: event.target.value, userName: event.target.value })
+                  }
+                />
+              </Row>
               <Row label="桌面通知" desc="用於健康守護、自動化、清理建議與更新提醒。">
                 <Toggle
                   checked={general.notifications !== false}
@@ -252,6 +333,7 @@ export default function Settings() {
                   {ACCENTS.map((color) => (
                     <button
                       key={color}
+                      aria-label={`Set accent color ${color}`}
                       className={`swatch ${accent === color ? 'active' : ''}`}
                       onClick={() => setAccent(color)}
                       title={color}
@@ -260,6 +342,7 @@ export default function Settings() {
                     />
                   ))}
                   <input
+                    aria-label="Choose custom accent color"
                     type="color"
                     value={accent}
                     onChange={(event) => setAccent(event.target.value)}
@@ -273,6 +356,27 @@ export default function Settings() {
                 <Button size="sm" onClick={() => window.api.testNotification()}>
                   測試
                 </Button>
+              </Row>
+              <Row
+                label="Dashboard 自動更新"
+                desc="切回儀表板時先使用快取；到達間隔才重新掃描。預設 60 秒。"
+              >
+                <input
+                  style={inputStyle}
+                  type="number"
+                  min="10"
+                  max="3600"
+                  step="5"
+                  value={general.dashboardRefreshIntervalSeconds || 60}
+                  onChange={(event) =>
+                    saveGeneral({
+                      dashboardRefreshIntervalSeconds: Math.max(
+                        10,
+                        Math.min(3600, Number(event.target.value) || 60),
+                      ),
+                    })
+                  }
+                />
               </Row>
             </Card>
           ) : null}
@@ -336,6 +440,26 @@ export default function Settings() {
                     選擇
                   </Button>
                 </div>
+              </Row>
+              <Row
+                label="自動整理 Downloads"
+                desc="新檔案進入後先等待穩定，再用本機分類器整理 Downloads。"
+              >
+                <Toggle
+                  checked={general.autoOrganizeDownloads === true}
+                  onChange={(enabled) => saveGeneral({ autoOrganizeDownloads: enabled })}
+                />
+              </Row>
+              <Row label="整理等待秒數">
+                <input
+                  style={inputStyle}
+                  type="number"
+                  min="15"
+                  value={general.autoOrganizeDelaySeconds || 45}
+                  onChange={(event) =>
+                    saveGeneral({ autoOrganizeDelaySeconds: Number(event.target.value) })
+                  }
+                />
               </Row>
             </Card>
           ) : null}
@@ -606,6 +730,112 @@ export default function Settings() {
                   onChange={(enabled) => saveCleanup({ writeDetailedLog: enabled })}
                 />
               </Row>
+              <Row label="排程安全掃描">
+                <Toggle
+                  checked={cleanup.schedule?.enabled === true}
+                  onChange={(enabled) =>
+                    saveCleanup({ schedule: { ...(cleanup.schedule || {}), enabled } })
+                  }
+                />
+              </Row>
+              <Row label="清理頻率">
+                <select
+                  style={inputStyle}
+                  value={cleanup.schedule?.frequency || 'daily'}
+                  onChange={(event) =>
+                    saveCleanup({
+                      schedule: { ...(cleanup.schedule || {}), frequency: event.target.value },
+                    })
+                  }
+                >
+                  <option value="daily">每日</option>
+                  <option value="weekly">每週</option>
+                </select>
+              </Row>
+              <Row label="排程時間">
+                <input
+                  style={inputStyle}
+                  type="time"
+                  value={cleanup.schedule?.time || '09:00'}
+                  onChange={(event) =>
+                    saveCleanup({ schedule: { ...(cleanup.schedule || {}), time: event.target.value } })
+                  }
+                />
+              </Row>
+              <Row label="執行日">
+                <div className="inline-controls">
+                  {['日', '一', '二', '三', '四', '五', '六'].map((label, day) => (
+                    <Button
+                      key={label}
+                      size="sm"
+                      variant={(cleanup.schedule?.days || []).includes(day) ? 'primary' : 'ghost'}
+                      onClick={() => toggleCleanupDay(day)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+              </Row>
+              <Row label="排程通知">
+                <Toggle
+                  checked={cleanup.schedule?.notify !== false}
+                  onChange={(notify) =>
+                    saveCleanup({ schedule: { ...(cleanup.schedule || {}), notify } })
+                  }
+                />
+              </Row>
+              <Row label="自動清理安全項目" desc="只處理 Clean Center 預設勾選的安全項目。">
+                <Toggle
+                  checked={cleanup.schedule?.autoCleanSafe === true}
+                  onChange={(autoCleanSafe) =>
+                    saveCleanup({ schedule: { ...(cleanup.schedule || {}), autoCleanSafe } })
+                  }
+                />
+              </Row>
+            </Card>
+          ) : null}
+
+          {category === 'projects' ? (
+            <Card title="Project Hub">
+              <Row label="Scan roots">
+                <div className="summary-list">
+                  {(projectHub.scanRoots || []).map((root) => (
+                    <div className="summary-row" key={root}>
+                      <span>{root}</span>
+                      <Button size="sm" variant="ghost" onClick={() => removeProjectRoot(root)}>
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                  <Button size="sm" onClick={pickProjectRoot}>
+                    Add root
+                  </Button>
+                </div>
+              </Row>
+              <Row label="Exclude folders">
+                <input
+                  style={inputStyle}
+                  value={(projectHub.excludeFolders || []).join(', ')}
+                  onChange={(event) =>
+                    saveProjectHub({
+                      excludeFolders: event.target.value
+                        .split(',')
+                        .map((item) => item.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                />
+              </Row>
+              <Row label="Max depth">
+                <input
+                  style={inputStyle}
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={projectHub.maxDepth || 2}
+                  onChange={(event) => saveProjectHub({ maxDepth: Number(event.target.value) })}
+                />
+              </Row>
             </Card>
           ) : null}
 
@@ -625,6 +855,31 @@ export default function Settings() {
                   checked={general.keepHistory !== false}
                   onChange={(enabled) => saveGeneral({ keepHistory: enabled })}
                 />
+              </Row>
+              <Row
+                label="Ask before organizing"
+                desc="Show a notification before automatic Downloads sorting moves files."
+              >
+                <Toggle
+                  checked={general.askBeforeOrganizing !== false}
+                  onChange={(askBeforeOrganizing) => saveGeneral({ askBeforeOrganizing })}
+                />
+              </Row>
+              <Row label="Monitor drives">
+                <div className="inline-controls">
+                  {(systemStatus?.metrics?.disks || []).map((disk) => (
+                    <Button
+                      key={disk.drive}
+                      size="sm"
+                      variant={
+                        (general.monitorDrives || []).includes(disk.drive) ? 'primary' : 'ghost'
+                      }
+                      onClick={() => toggleMonitorDrive(disk.drive)}
+                    >
+                      {disk.drive}
+                    </Button>
+                  ))}
+                </div>
               </Row>
             </Card>
           ) : null}
