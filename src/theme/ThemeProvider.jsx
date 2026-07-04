@@ -3,16 +3,11 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 const ThemeContext = createContext(null);
 export const useTheme = () => useContext(ThemeContext);
 
-const THEMES = ['system', 'light', 'dark'];
-
-function systemPrefersDark() {
-  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-}
-
-function applyToDocument(theme, accent, compact) {
-  const resolved = theme === 'system' ? (systemPrefersDark() ? 'dark' : 'light') : theme;
+// The app is dark-only: the cosmic background and globe are designed for a
+// deep-space palette, so the old light/system theme modes were removed.
+function applyToDocument(accent, compact) {
   const root = document.documentElement;
-  root.setAttribute('data-theme', resolved);
+  root.setAttribute('data-theme', 'dark');
   root.setAttribute('data-compact', compact ? 'true' : 'false');
   if (accent) {
     root.style.setProperty('--accent', accent);
@@ -21,7 +16,6 @@ function applyToDocument(theme, accent, compact) {
 }
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState('dark');
   const [accent, setAccentState] = useState('#22d3ee');
   const [compact, setCompactState] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -33,7 +27,6 @@ export function ThemeProvider({ children }) {
         if (window.api) {
           const res = await window.api.getSettings();
           const g = (res.settings && res.settings.general) || {};
-          if (THEMES.includes(g.theme)) setThemeState(g.theme);
           if (g.accentColor) setAccentState(g.accentColor);
           setCompactState(!!g.compactMode);
         }
@@ -47,19 +40,8 @@ export function ThemeProvider({ children }) {
 
   // Apply on any change.
   useEffect(() => {
-    applyToDocument(theme, accent, compact);
-  }, [theme, accent, compact]);
-
-  // Follow OS theme changes when in 'system' mode.
-  useEffect(() => {
-    if (!window.matchMedia) return undefined;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = () => {
-      if (theme === 'system') applyToDocument(theme, accent, compact);
-    };
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, [theme, accent, compact]);
+    applyToDocument(accent, compact);
+  }, [accent, compact]);
 
   const persist = useCallback(async (patch) => {
     if (!window.api) return;
@@ -72,13 +54,6 @@ export function ThemeProvider({ children }) {
     }
   }, []);
 
-  const setTheme = useCallback(
-    (t) => {
-      setThemeState(t);
-      persist({ theme: t });
-    },
-    [persist],
-  );
   const setAccent = useCallback(
     (a) => {
       setAccentState(a);
@@ -94,23 +69,15 @@ export function ThemeProvider({ children }) {
     [persist],
   );
 
-  const cycleTheme = useCallback(() => {
-    const idx = THEMES.indexOf(theme);
-    setTheme(THEMES[(idx + 1) % THEMES.length]);
-  }, [theme, setTheme]);
-
   return (
     <ThemeContext.Provider
       value={{
-        theme,
+        theme: 'dark',
         accent,
         compact,
         loaded,
-        setTheme,
         setAccent,
         setCompact,
-        cycleTheme,
-        THEMES,
       }}
     >
       {children}

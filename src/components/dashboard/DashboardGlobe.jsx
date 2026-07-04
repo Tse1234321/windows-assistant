@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { formatBytes } from '../../utils/format.js';
 import { useLocale } from '../../i18n.jsx';
-import { useTheme } from '../../theme/ThemeProvider.jsx';
+import { isLand } from './earthLandmask.js';
 
 const STATUS_ORDER = { danger: 4, warning: 3, normal: 2, good: 1 };
 
@@ -20,21 +20,6 @@ const TYPE_COLORS = {
   system: 0x22d3ee,
   cleanup: 0xd946ef,
   automation: 0x22d3ee,
-};
-
-const LIGHT_STATUS_COLORS = {
-  good: 0x0ea5a4,
-  normal: 0x2563eb,
-  warning: 0xd97706,
-  danger: 0xe11d48,
-};
-
-const LIGHT_TYPE_COLORS = {
-  file: 0x2563eb,
-  project: 0x0891b2,
-  system: 0x0284c7,
-  cleanup: 0x059669,
-  automation: 0x0ea5a4,
 };
 
 function hash(input) {
@@ -59,47 +44,46 @@ function sphericalPosition(index, total, seed, radius = 2.34) {
   );
 }
 
-function makeGlowTexture(isLightTheme = false) {
+function makeGlowTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 96;
   canvas.height = 96;
   const ctx = canvas.getContext('2d');
   const gradient = ctx.createRadialGradient(48, 48, 0, 48, 48, 48);
-  if (isLightTheme) {
-    gradient.addColorStop(0, 'rgba(255,255,255,0.9)');
-    gradient.addColorStop(0.2, 'rgba(37,99,235,0.42)');
-    gradient.addColorStop(0.52, 'rgba(14,165,233,0.2)');
-    gradient.addColorStop(0.78, 'rgba(45,212,191,0.12)');
-    gradient.addColorStop(1, 'rgba(37,99,235,0)');
-  } else {
-    gradient.addColorStop(0, 'rgba(255,255,255,0.95)');
-    gradient.addColorStop(0.18, 'rgba(56,189,248,0.72)');
-    gradient.addColorStop(0.52, 'rgba(168,85,247,0.28)');
-    gradient.addColorStop(0.72, 'rgba(217,70,239,0.18)');
-    gradient.addColorStop(1, 'rgba(56,189,248,0)');
-  }
+  gradient.addColorStop(0, 'rgba(255,255,255,0.95)');
+  gradient.addColorStop(0.18, 'rgba(56,189,248,0.72)');
+  gradient.addColorStop(0.52, 'rgba(168,85,247,0.28)');
+  gradient.addColorStop(0.72, 'rgba(217,70,239,0.18)');
+  gradient.addColorStop(1, 'rgba(56,189,248,0)');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 96, 96);
   return new THREE.CanvasTexture(canvas);
 }
 
-function makeCityPoints(count = 1100, radius = 2.365, isLightTheme = false) {
+function makeLandPoints(count = 20000, radius = 2.365) {
   const positions = [];
   const colors = [];
-  const primary = new THREE.Color(isLightTheme ? 0x2563eb : 0x67e8f9);
-  const secondary = new THREE.Color(isLightTheme ? 0x0ea5e9 : 0xa78bfa);
-  const accent = new THREE.Color(isLightTheme ? 0x14b8a6 : 0xd946ef);
+  const primary = new THREE.Color(0x67e8f9);
+  const secondary = new THREE.Color(0xa78bfa);
+  const accent = new THREE.Color(0xd946ef);
+  const golden = Math.PI * (3 - Math.sqrt(5));
 
   for (let index = 0; index < count; index += 1) {
-    const vec = sphericalPosition(index, count, index * 31, radius);
-    const noise = Math.sin(index * 12.9898) * 43758.5453;
-    const band = Math.abs(Math.sin(vec.x * 1.8 + vec.y * 3.2 + vec.z * 0.7));
-    if (band < 0.25 && index % 3 !== 0) continue;
-    positions.push(vec.x, vec.y, vec.z);
+    const y = 1 - (index / Math.max(1, count - 1)) * 2;
+    const latDeg = (Math.asin(THREE.MathUtils.clamp(y, -1, 1)) * 180) / Math.PI;
+    const lonDeg = (((((golden * index * 180) / Math.PI) % 360) + 540) % 360) - 180;
+    if (!isLand(latDeg, lonDeg)) continue;
+
+    const lat = (latDeg * Math.PI) / 180;
+    const lon = (lonDeg * Math.PI) / 180;
+    positions.push(
+      radius * Math.cos(lat) * Math.sin(lon),
+      radius * Math.sin(lat),
+      radius * Math.cos(lat) * Math.cos(lon),
+    );
+    const noise = Math.abs(Math.sin(index * 12.9898) * 43758.5453);
     const color = index % 13 === 0 ? accent : index % 5 === 0 ? secondary : primary;
-    const strength = isLightTheme
-      ? 0.38 + (Math.abs(noise) % 0.38)
-      : 0.45 + (Math.abs(noise) % 0.55);
+    const strength = 0.45 + (noise % 0.55);
     colors.push(color.r * strength, color.g * strength, color.b * strength);
   }
 
@@ -107,6 +91,46 @@ function makeCityPoints(count = 1100, radius = 2.365, isLightTheme = false) {
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   return geometry;
+}
+
+function makeStarLayer(count, seedOffset = 0) {
+  const positions = [];
+  const colors = [];
+  const palette = [new THREE.Color(0xffffff), new THREE.Color(0x9dd8ff), new THREE.Color(0xc4b5fd)];
+
+  for (let index = 0; index < count; index += 1) {
+    const seed = hash(`star-${seedOffset}-${index}`);
+    const u = ((seed % 1000) + 1000) % 1000;
+    const v = (((seed >> 5) % 1000) + 1000) % 1000;
+    const w = (((seed >> 10) % 1000) + 1000) % 1000;
+    const theta = (u / 1000) * Math.PI * 2;
+    const phi = Math.acos((v / 1000) * 2 - 1);
+    const radius = 5.4 + (w / 1000) * 4.2;
+    positions.push(
+      radius * Math.sin(phi) * Math.cos(theta),
+      radius * Math.cos(phi) * 0.72,
+      -Math.abs(radius * Math.sin(phi) * Math.sin(theta)) - 1.2,
+    );
+    const color = palette[seed % 3 === 0 ? 2 : seed % 2 === 0 ? 1 : 0];
+    const strength = 0.45 + ((((seed >> 3) % 100) + 100) % 100) / 180;
+    colors.push(color.r * strength, color.g * strength, color.b * strength);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  return new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({
+      size: 0.038,
+      transparent: true,
+      opacity: 0.85,
+      vertexColors: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
+    }),
+  );
 }
 
 function makeOrbit(radius, yScale, segments = 192) {
@@ -172,12 +196,14 @@ export default function DashboardGlobe({
   onNodeSelect,
   onNodeClear,
   onNodeOpen,
+  liveMetrics = null,
+  statusFilter = null,
 }) {
   const { t } = useLocale();
-  const themeCtx = useTheme();
-  const isLightTheme = themeCtx?.theme === 'light';
   const stageRef = useRef(null);
   const selectedNodeIdRef = useRef(selectedNode?.id || null);
+  const liveMetricsRef = useRef({});
+  const statusFilterRef = useRef(null);
   const [hasWebGl, setHasWebGl] = useState(true);
   const [hovered, setHovered] = useState(null);
   const [selectedAnchor, setSelectedAnchor] = useState(null);
@@ -200,6 +226,14 @@ export default function DashboardGlobe({
     selectedNodeIdRef.current = selectedNode?.id || null;
     if (!selectedNode) setSelectedAnchor(null);
   }, [selectedNode]);
+
+  useEffect(() => {
+    liveMetricsRef.current = liveMetrics || {};
+  }, [liveMetrics]);
+
+  useEffect(() => {
+    statusFilterRef.current = statusFilter?.length ? new Set(statusFilter) : null;
+  }, [statusFilter]);
 
   useEffect(() => {
     const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -239,34 +273,34 @@ export default function DashboardGlobe({
     root.rotation.set(-0.12, -0.4, 0.02);
     scene.add(root);
 
-    const statusColors = isLightTheme ? LIGHT_STATUS_COLORS : STATUS_COLORS;
-    const typeColors = isLightTheme ? LIGHT_TYPE_COLORS : TYPE_COLORS;
-    const selectedColor = isLightTheme ? 0xffffff : 0xe0fbff;
-    const haloColor = isLightTheme ? 0x2563eb : 0x67e8f9;
-    const linkPrimary = isLightTheme ? 0x2563eb : 0x22d3ee;
-    const linkSecondary = isLightTheme ? 0x0ea5e9 : 0xa78bfa;
+    const statusColors = STATUS_COLORS;
+    const typeColors = TYPE_COLORS;
+    const selectedColor = 0xe0fbff;
+    const haloColor = 0x67e8f9;
+    const linkPrimary = 0x22d3ee;
+    const linkSecondary = 0xa78bfa;
 
-    scene.add(new THREE.AmbientLight(isLightTheme ? 0xd9ecff : 0x8bdfff, isLightTheme ? 1.08 : 0.76));
-    const keyLight = new THREE.DirectionalLight(isLightTheme ? 0xffffff : 0x67e8f9, isLightTheme ? 2.45 : 2.2);
+    scene.add(new THREE.AmbientLight(0x8bdfff, 0.76));
+    const keyLight = new THREE.DirectionalLight(0x67e8f9, 2.2);
     keyLight.position.set(-3, 3, 5);
     scene.add(keyLight);
-    const rimLight = new THREE.PointLight(isLightTheme ? 0x60a5fa : 0x38bdf8, isLightTheme ? 5.4 : 8.5, 8);
+    const rimLight = new THREE.PointLight(0x38bdf8, 8.5, 8);
     rimLight.position.set(0, -0.4, 3.3);
     scene.add(rimLight);
-    const purpleRimLight = new THREE.PointLight(isLightTheme ? 0x2dd4bf : 0xd946ef, isLightTheme ? 3.8 : 6.8, 8);
+    const purpleRimLight = new THREE.PointLight(0xd946ef, 6.8, 8);
     purpleRimLight.position.set(2.8, 1.2, 2.8);
     scene.add(purpleRimLight);
 
     const globeGeometry = new THREE.SphereGeometry(2.22, 96, 96);
     const globeMaterial = new THREE.MeshPhysicalMaterial({
-      color: isLightTheme ? 0x9fc7f5 : 0x080f35,
-      emissive: isLightTheme ? 0x2f7be8 : 0x24115f,
-      emissiveIntensity: isLightTheme ? 0.22 : 0.78,
-      roughness: isLightTheme ? 0.42 : 0.36,
-      metalness: isLightTheme ? 0.02 : 0.05,
-      transmission: isLightTheme ? 0.38 : 0.18,
+      color: 0x080f35,
+      emissive: 0x24115f,
+      emissiveIntensity: 0.78,
+      roughness: 0.36,
+      metalness: 0.05,
+      transmission: 0.18,
       transparent: true,
-      opacity: isLightTheme ? 0.58 : 0.88,
+      opacity: 0.88,
       depthWrite: false,
     });
     const globe = new THREE.Mesh(globeGeometry, globeMaterial);
@@ -275,44 +309,26 @@ export default function DashboardGlobe({
     const wire = new THREE.LineSegments(
       new THREE.WireframeGeometry(new THREE.SphereGeometry(2.235, 36, 20)),
       new THREE.LineBasicMaterial({
-        color: isLightTheme ? 0x2563eb : 0x67e8f9,
+        color: 0x67e8f9,
         transparent: true,
-        opacity: isLightTheme ? 0.13 : 0.18,
+        opacity: 0.18,
       }),
     );
     root.add(wire);
 
-    const rim = new THREE.Mesh(
-      new THREE.SphereGeometry(2.285, 96, 96),
-      new THREE.MeshBasicMaterial({
-        color: isLightTheme ? 0x60a5fa : 0x10d9ff,
-        side: THREE.BackSide,
-        transparent: true,
-        opacity: isLightTheme ? 0.13 : 0.22,
-        blending: THREE.AdditiveBlending,
-      }),
-    );
-    root.add(rim);
-
-    const purpleRim = new THREE.Mesh(
-      new THREE.SphereGeometry(2.33, 96, 96),
-      new THREE.MeshBasicMaterial({
-        color: isLightTheme ? 0x2dd4bf : 0xa855f7,
-        side: THREE.BackSide,
-        transparent: true,
-        opacity: isLightTheme ? 0.08 : 0.15,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    root.add(purpleRim);
+    const starGroup = new THREE.Group();
+    const starLayerA = makeStarLayer(420, 1);
+    const starLayerB = makeStarLayer(420, 2);
+    starGroup.add(starLayerA);
+    starGroup.add(starLayerB);
+    scene.add(starGroup);
 
     const cityPoints = new THREE.Points(
-      makeCityPoints(1100, 2.365, isLightTheme),
+      makeLandPoints(20000, 2.365),
       new THREE.PointsMaterial({
-        size: isLightTheme ? 0.012 : 0.014,
+        size: 0.017,
         transparent: true,
-        opacity: isLightTheme ? 0.72 : 0.9,
+        opacity: 0.9,
         vertexColors: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
@@ -320,30 +336,7 @@ export default function DashboardGlobe({
     );
     root.add(cityPoints);
 
-    const backgroundPositions = [];
-    for (let index = 0; index < 260; index += 1) {
-      const seed = hash(`bg-${index}`);
-      backgroundPositions.push(
-        ((seed % 1000) / 1000 - 0.5) * 10.5,
-        (((seed >> 4) % 1000) / 1000 - 0.5) * 7.2,
-        -2.8 - (((seed >> 8) % 1000) / 1000) * 4.5,
-      );
-    }
-    const bgGeometry = new THREE.BufferGeometry();
-    bgGeometry.setAttribute('position', new THREE.Float32BufferAttribute(backgroundPositions, 3));
-    const bgParticles = new THREE.Points(
-      bgGeometry,
-      new THREE.PointsMaterial({
-        color: isLightTheme ? 0x2563eb : 0x4cc9ff,
-        size: 0.025,
-        transparent: true,
-        opacity: isLightTheme ? 0.2 : 0.48,
-        blending: THREE.AdditiveBlending,
-      }),
-    );
-    scene.add(bgParticles);
-
-    const glowTexture = makeGlowTexture(isLightTheme);
+    const glowTexture = makeGlowTexture();
     const maxValue = Math.max(1, ...displayNodes.map(getNodeValue));
     const nodeMeshes = [];
     const selectedHaloSprites = [];
@@ -422,7 +415,7 @@ export default function DashboardGlobe({
       const material = new THREE.LineBasicMaterial({
         color: index % 5 === 0 ? linkSecondary : linkPrimary,
         transparent: true,
-        opacity: isLightTheme ? 0.16 : 0.24,
+        opacity: 0.24,
         blending: THREE.AdditiveBlending,
       });
       const line = new THREE.Line(arc.geometry, material);
@@ -437,24 +430,18 @@ export default function DashboardGlobe({
     });
 
     const orbitGroup = new THREE.Group();
-    const orbits = isLightTheme
-      ? [
-          { radius: 2.72, yScale: 0.38, rot: [0.1, 0.4, 0.1], color: 0x2563eb },
-          { radius: 2.9, yScale: 0.26, rot: [0.82, -0.32, 0.45], color: 0x0ea5e9 },
-          { radius: 3.06, yScale: 0.44, rot: [-0.42, 0.95, -0.18], color: 0x14b8a6 },
-        ]
-      : [
-          { radius: 2.72, yScale: 0.38, rot: [0.1, 0.4, 0.1], color: 0x22d3ee },
-          { radius: 2.9, yScale: 0.26, rot: [0.82, -0.32, 0.45], color: 0x3b82f6 },
-          { radius: 3.06, yScale: 0.44, rot: [-0.42, 0.95, -0.18], color: 0xa78bfa },
-        ];
+    const orbits = [
+      { radius: 2.72, yScale: 0.38, rot: [0.1, 0.4, 0.1], color: 0x22d3ee },
+      { radius: 2.9, yScale: 0.26, rot: [0.82, -0.32, 0.45], color: 0x3b82f6 },
+      { radius: 3.06, yScale: 0.44, rot: [-0.42, 0.95, -0.18], color: 0xa78bfa },
+    ];
     orbits.forEach((orbit) => {
       const ring = new THREE.Line(
         makeOrbit(orbit.radius, orbit.yScale),
         new THREE.LineBasicMaterial({
           color: orbit.color,
           transparent: true,
-          opacity: isLightTheme ? 0.18 : 0.26,
+          opacity: 0.26,
           blending: THREE.AdditiveBlending,
         }),
       );
@@ -465,12 +452,30 @@ export default function DashboardGlobe({
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
-    const drag = { active: false, x: 0, y: 0, moved: false };
+    const drag = { active: false, x: 0, y: 0, moved: false, vx: 0, vy: 0 };
+    const spin = { x: 0, y: 0 };
+    const focus = { active: false, targetX: 0, targetY: 0 };
+    const parallax = { x: 0, y: 0 };
+    const baseEmissiveIntensity = globeMaterial.emissiveIntensity;
+    const baseRimIntensity = rimLight.intensity;
     let hoveredMesh = null;
     let cameraDistance = 6.2;
     let animationFrame = 0;
     let frameCount = 0;
     const worldPosition = new THREE.Vector3();
+
+    const focusOnMesh = (mesh) => {
+      const anchor = mesh.parent?.position || mesh.position;
+      const horizontal = Math.hypot(anchor.x, anchor.z);
+      let targetY = Math.atan2(-anchor.x, anchor.z);
+      const twoPi = Math.PI * 2;
+      targetY += twoPi * Math.round((root.rotation.y - targetY) / twoPi);
+      focus.targetY = targetY;
+      focus.targetX = THREE.MathUtils.clamp(Math.atan2(anchor.y, horizontal), -0.78, 0.78);
+      focus.active = true;
+      spin.x = 0;
+      spin.y = 0;
+    };
 
     const resize = () => {
       const rect = stage.getBoundingClientRect();
@@ -494,10 +499,19 @@ export default function DashboardGlobe({
       setHovered(null);
     };
 
+    const onPointerLeave = () => {
+      parallax.x = 0;
+      parallax.y = 0;
+      clearHover();
+    };
+
     const findHit = (event) => {
       setPointer(event);
+      parallax.x = pointer.x;
+      parallax.y = pointer.y;
       raycaster.setFromCamera(pointer, camera);
-      return raycaster.intersectObjects(nodeMeshes, false)[0]?.object || null;
+      const visibleMeshes = nodeMeshes.filter((mesh) => !mesh.userData.filteredOut);
+      return raycaster.intersectObjects(visibleMeshes, false)[0]?.object || null;
     };
 
     const updateHover = (event) => {
@@ -532,6 +546,10 @@ export default function DashboardGlobe({
       drag.x = event.clientX;
       drag.y = event.clientY;
       drag.moved = false;
+      drag.vx = 0;
+      drag.vy = 0;
+      spin.x = 0;
+      spin.y = 0;
       if (event.pointerId != null) renderer.domElement.setPointerCapture?.(event.pointerId);
     };
 
@@ -539,9 +557,14 @@ export default function DashboardGlobe({
       if (drag.active) {
         const dx = event.clientX - drag.x;
         const dy = event.clientY - drag.y;
-        if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
+        if (Math.abs(dx) + Math.abs(dy) > 2) {
+          drag.moved = true;
+          focus.active = false;
+        }
         root.rotation.y += dx * 0.006;
         root.rotation.x = THREE.MathUtils.clamp(root.rotation.x + dy * 0.004, -0.78, 0.78);
+        drag.vx = dx * 0.006;
+        drag.vy = dy * 0.004;
         drag.x = event.clientX;
         drag.y = event.clientY;
       }
@@ -549,6 +572,10 @@ export default function DashboardGlobe({
     };
 
     const onPointerUp = (event) => {
+      if (drag.active && drag.moved) {
+        spin.y = THREE.MathUtils.clamp(drag.vx, -0.09, 0.09);
+        spin.x = THREE.MathUtils.clamp(drag.vy, -0.06, 0.06);
+      }
       drag.active = false;
       if (event.pointerId != null) renderer.domElement.releasePointerCapture?.(event.pointerId);
     };
@@ -559,6 +586,7 @@ export default function DashboardGlobe({
       if (clickedMesh?.userData?.dashboardNode) {
         onNodeSelect?.(clickedMesh.userData.dashboardNode);
         clickedMesh.scale.setScalar(1.7);
+        focusOnMesh(clickedMesh);
       } else {
         onNodeClear?.();
       }
@@ -574,11 +602,11 @@ export default function DashboardGlobe({
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointermove', onPointerMove);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
-    renderer.domElement.addEventListener('pointerleave', clearHover);
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave);
     renderer.domElement.addEventListener('mousedown', onPointerDown);
     renderer.domElement.addEventListener('mousemove', onPointerMove);
     renderer.domElement.addEventListener('mouseup', onPointerUp);
-    renderer.domElement.addEventListener('mouseleave', clearHover);
+    renderer.domElement.addEventListener('mouseleave', onPointerLeave);
     renderer.domElement.addEventListener('click', onClick);
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
 
@@ -588,15 +616,54 @@ export default function DashboardGlobe({
 
     const animate = (time) => {
       const seconds = time * 0.001;
-      root.rotation.y += hoveredMesh || drag.active ? 0.0007 : 0.0019;
+      const live = liveMetricsRef.current || {};
+      const cpu01 = THREE.MathUtils.clamp(Number(live.cpuPercent) / 100 || 0, 0, 1);
+      const mem01 = THREE.MathUtils.clamp(Number(live.memoryPercent) / 100 || 0, 0, 1);
+      const filter = statusFilterRef.current;
+
+      if (focus.active && !drag.active) {
+        root.rotation.y += (focus.targetY - root.rotation.y) * 0.07;
+        root.rotation.x += (focus.targetX - root.rotation.x) * 0.07;
+        if (
+          Math.abs(focus.targetY - root.rotation.y) < 0.004 &&
+          Math.abs(focus.targetX - root.rotation.x) < 0.004
+        )
+          focus.active = false;
+      } else {
+        root.rotation.y += selectedNodeIdRef.current
+          ? 0.0004
+          : hoveredMesh || drag.active
+            ? 0.0007
+            : 0.0019;
+        if (!drag.active && (spin.x || spin.y)) {
+          root.rotation.y += spin.y;
+          root.rotation.x = THREE.MathUtils.clamp(root.rotation.x + spin.x, -0.78, 0.78);
+          spin.x = Math.abs(spin.x) < 0.00005 ? 0 : spin.x * 0.94;
+          spin.y = Math.abs(spin.y) < 0.00005 ? 0 : spin.y * 0.94;
+        }
+      }
+
+      camera.position.x += (parallax.x * 0.24 - camera.position.x) * 0.05;
+      camera.position.y += (0.08 + parallax.y * 0.16 - camera.position.y) * 0.05;
+      camera.lookAt(0, 0, 0);
+
+      globeMaterial.emissiveIntensity =
+        baseEmissiveIntensity * (0.9 + cpu01 * 0.4 + Math.sin(seconds * (0.9 + cpu01 * 2.4)) * 0.1);
+      rimLight.intensity = baseRimIntensity * (0.9 + mem01 * 0.35);
+
       orbitGroup.rotation.y -= 0.0015;
       orbitGroup.rotation.z += 0.0005;
-      bgParticles.rotation.y += 0.00028;
+      starGroup.rotation.y += 0.00035;
+      starLayerA.material.opacity = 0.72 + Math.sin(seconds * 1.4) * 0.2;
+      starLayerB.material.opacity = 0.72 - Math.sin(seconds * 1.4) * 0.2;
       cityPoints.material.opacity = 0.74 + Math.sin(seconds * 1.7) * 0.12;
       frameCount += 1;
 
       nodeMeshes.forEach((mesh, index) => {
-        const isSelected = mesh.userData.dashboardNode?.id === selectedNodeIdRef.current;
+        const node = mesh.userData.dashboardNode;
+        const isSelected = node?.id === selectedNodeIdRef.current;
+        const filteredOut = Boolean(filter && node && !filter.has(node.status) && !isSelected);
+        mesh.userData.filteredOut = filteredOut;
         const material = mesh.material;
         const sprite = mesh.userData.glowSprite;
         const halos = mesh.userData.selectionHalos || [];
@@ -630,18 +697,27 @@ export default function DashboardGlobe({
         }
 
         material.color.setHex(mesh.userData.defaultColor);
+        halos.forEach((halo) => {
+          halo.visible = false;
+          halo.material.opacity = 0;
+        });
+
+        if (filteredOut) {
+          material.opacity += (0.07 - material.opacity) * 0.16;
+          if (sprite) sprite.material.opacity += (0.03 - sprite.material.opacity) * 0.16;
+          mesh.scale.setScalar(Math.max(0.8, mesh.scale.x * 0.96));
+          return;
+        }
+
         material.opacity = 0.96;
         if (sprite) {
           sprite.material.opacity = 0.75;
           sprite.scale.setScalar(mesh.userData.baseRadius * 7.5);
         }
-        halos.forEach((halo) => {
-          halo.visible = false;
-          halo.material.opacity = 0;
-        });
         if (mesh === hoveredMesh) return;
         const pulse = mesh.userData.alert ? 0.22 : 0.09;
-        mesh.scale.setScalar(1 + Math.sin(seconds * 2.4 + index) * pulse);
+        const pulseSpeed = node?.type === 'system' ? 2.4 + cpu01 * 3.4 : 2.4;
+        mesh.scale.setScalar(1 + Math.sin(seconds * pulseSpeed + index) * pulse);
       });
 
       linkRecords.forEach((record, index) => {
@@ -660,11 +736,11 @@ export default function DashboardGlobe({
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
-      renderer.domElement.removeEventListener('pointerleave', clearHover);
+      renderer.domElement.removeEventListener('pointerleave', onPointerLeave);
       renderer.domElement.removeEventListener('mousedown', onPointerDown);
       renderer.domElement.removeEventListener('mousemove', onPointerMove);
       renderer.domElement.removeEventListener('mouseup', onPointerUp);
-      renderer.domElement.removeEventListener('mouseleave', clearHover);
+      renderer.domElement.removeEventListener('mouseleave', onPointerLeave);
       renderer.domElement.removeEventListener('click', onClick);
       renderer.domElement.removeEventListener('wheel', onWheel);
       scene.traverse((object) => {
@@ -680,7 +756,7 @@ export default function DashboardGlobe({
       renderer.dispose();
       if (renderer.domElement.parentNode === stage) stage.removeChild(renderer.domElement);
     };
-  }, [displayNodes, isLightTheme, onNodeClear, onNodeSelect]);
+  }, [displayNodes, onNodeClear, onNodeSelect]);
 
   const tooltipNode = hovered?.node;
   const selected = selectedNode;
@@ -709,7 +785,6 @@ export default function DashboardGlobe({
 
   return (
     <section className="dashboard-globe-card glass-card hologram-globe-card">
-      <div className="globe-hud-grid" />
       <div className="globe-scanline" />
       <div ref={stageRef} className="globe-stage" aria-label="Interactive 3D data globe" />
 
@@ -737,7 +812,7 @@ export default function DashboardGlobe({
 
       {tooltipNode ? (
         <div
-          className={`globe-tooltip${isLightTheme ? '' : ' globe-tooltip-dark'}`}
+          className="globe-tooltip globe-tooltip-dark"
           style={{
             left: `${Math.min(Math.max(hovered.x + 16, 18), Math.max(18, (stageRef.current?.clientWidth || 360) - 230))}px`,
             top: `${Math.min(Math.max(hovered.y - 16, 18), Math.max(18, (stageRef.current?.clientHeight || 420) - 140))}px`,

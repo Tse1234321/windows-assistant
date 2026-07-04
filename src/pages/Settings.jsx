@@ -50,7 +50,7 @@ function Row({ label, desc, children }) {
 
 export default function Settings() {
   const { toast } = useToast();
-  const { theme, setTheme, accent, setAccent, compact, setCompact } = useTheme();
+  const { accent, setAccent, compact, setCompact } = useTheme();
   const { language, setLanguage, t } = useLocale();
   const api = typeof window !== 'undefined' ? window.api : undefined;
   const apiAvailable = !!api?.getSettings;
@@ -312,20 +312,6 @@ export default function Settings() {
                   >
                     {t('settings.english')}
                   </Button>
-                </div>
-              </Row>
-              <Row label="主題">
-                <div className="inline-controls">
-                  {['system', 'light', 'dark'].map((item) => (
-                    <Button
-                      key={item}
-                      size="sm"
-                      variant={theme === item ? 'primary' : 'ghost'}
-                      onClick={() => setTheme(item)}
-                    >
-                      {item === 'system' ? '系統' : item === 'light' ? '淺色' : '深色'}
-                    </Button>
-                  ))}
                 </div>
               </Row>
               <Row label="強調色">
@@ -758,7 +744,9 @@ export default function Settings() {
                   type="time"
                   value={cleanup.schedule?.time || '09:00'}
                   onChange={(event) =>
-                    saveCleanup({ schedule: { ...(cleanup.schedule || {}), time: event.target.value } })
+                    saveCleanup({
+                      schedule: { ...(cleanup.schedule || {}), time: event.target.value },
+                    })
                   }
                 />
               </Row>

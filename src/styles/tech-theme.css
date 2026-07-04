@@ -37,11 +37,7 @@
     linear-gradient(180deg, #f4f8fe 0%, #e9f0fb 100%);
 }
 
-/* The decorative background is a light-theme treatment; hide it in dark. */
-:root[data-theme='dark'] .app-bg {
-  display: none;
-}
-
+/* ---------- Cosmic animated background ---------- */
 .app-bg {
   position: absolute;
   inset: 0;
@@ -50,44 +46,81 @@
   pointer-events: none;
 }
 
-.app-bg .grid {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(rgba(37, 99, 235, 0.035) 1px, transparent 1px) 0 0 / 46px 46px,
-    linear-gradient(90deg, rgba(37, 99, 235, 0.035) 1px, transparent 1px) 0 0 / 46px 46px;
-  -webkit-mask-image: radial-gradient(120% 90% at 80% 0%, #000 30%, transparent 75%);
-  mask-image: radial-gradient(120% 90% at 80% 0%, #000 30%, transparent 75%);
-}
-
-.app-bg .ring {
+/* Soft drifting nebula clouds behind everything. */
+.app-bg .nebula {
   position: absolute;
   border-radius: 50%;
-  border: 1px solid rgba(37, 99, 235, 0.1);
+  filter: blur(70px);
+  opacity: 0.55;
+  will-change: transform;
+  animation: nebula-drift ease-in-out infinite alternate;
 }
 
-.app-bg .ring.r1 {
-  width: 520px;
-  height: 520px;
-  right: -120px;
-  top: -160px;
-}
-.app-bg .ring.r2 {
-  width: 360px;
-  height: 360px;
-  right: -40px;
-  top: -80px;
-  border-color: rgba(56, 189, 248, 0.12);
-}
-.app-bg .ring.r3 {
-  width: 240px;
-  height: 240px;
-  right: 20px;
-  top: 0;
-  border-style: dashed;
-  border-color: rgba(37, 99, 235, 0.1);
+.app-bg .nebula.n1 {
+  width: 46vw;
+  height: 46vw;
+  left: -12vw;
+  top: -16vh;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.16), transparent 68%);
+  animation-duration: 26s;
 }
 
+.app-bg .nebula.n2 {
+  width: 52vw;
+  height: 52vw;
+  right: -16vw;
+  bottom: -22vh;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.17), transparent 66%);
+  animation-duration: 34s;
+  animation-delay: -9s;
+}
+
+.app-bg .nebula.n3 {
+  width: 34vw;
+  height: 34vw;
+  right: 16vw;
+  top: -10vh;
+  background: radial-gradient(circle, rgba(217, 70, 239, 0.1), transparent 70%);
+  animation-duration: 42s;
+  animation-delay: -20s;
+}
+
+@keyframes nebula-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(4vw, 3vh, 0) scale(1.12);
+  }
+}
+
+/* Twinkling stars. */
+.app-bg .starfield {
+  position: absolute;
+  inset: 0;
+}
+
+.app-bg .starfield i {
+  position: absolute;
+  border-radius: 50%;
+  background: #eaf6ff;
+  box-shadow: 0 0 6px 1px rgba(157, 216, 255, 0.5);
+  opacity: 0.2;
+  animation: star-twinkle var(--twinkle-dur, 4s) ease-in-out var(--twinkle-delay, 0s) infinite;
+  will-change: opacity;
+}
+
+@keyframes star-twinkle {
+  0%,
+  100% {
+    opacity: 0.12;
+  }
+  50% {
+    opacity: var(--twinkle-peak, 0.8);
+  }
+}
+
+/* Slow upward-drifting glow motes. */
 .app-bg .particles {
   position: absolute;
   inset: 0;
@@ -95,14 +128,55 @@
 .app-bg .particles i {
   position: absolute;
   border-radius: 50%;
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(59, 130, 246, 0.9),
-    rgba(59, 130, 246, 0) 70%
-  );
-  box-shadow: 0 0 6px 1px rgba(59, 130, 246, 0.35);
+  background: radial-gradient(circle, rgba(103, 232, 249, 0.96), rgba(168, 85, 247, 0) 72%);
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.45);
   animation: app-drift linear infinite;
   will-change: transform, opacity;
+}
+
+/* Occasional shooting stars. */
+.app-bg .shooting-star {
+  position: absolute;
+  width: 150px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(234, 246, 255, 0.9), transparent);
+  border-radius: 999px;
+  opacity: 0;
+  transform: rotate(18deg);
+  animation: shooting 13s linear infinite;
+  will-change: transform, opacity;
+}
+
+.app-bg .shooting-star.s1 {
+  top: 12%;
+  left: 4%;
+}
+
+.app-bg .shooting-star.s2 {
+  top: 58%;
+  left: 46%;
+  animation-delay: -6.5s;
+  animation-duration: 17s;
+  transform: rotate(24deg);
+}
+
+@keyframes shooting {
+  0%,
+  91% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(18deg);
+  }
+  92.5% {
+    opacity: 0.85;
+  }
+  97% {
+    opacity: 0;
+    transform: translate3d(46vw, 15vw, 0) rotate(18deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(46vw, 15vw, 0) rotate(18deg);
+  }
 }
 
 @keyframes app-drift {
@@ -410,6 +484,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .app-bg .particles i,
+  .app-bg .starfield i,
+  .app-bg .nebula,
+  .app-bg .shooting-star,
   .dash-globe .halo,
   .dash-globe .orbit {
     animation: none;

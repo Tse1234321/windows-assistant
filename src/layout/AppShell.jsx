@@ -4,9 +4,21 @@ import Topbar from './Topbar.jsx';
 import { useLocale } from '../i18n.jsx';
 
 function AppBackground() {
+  const stars = useMemo(
+    () =>
+      Array.from({ length: 110 }, () => ({
+        left: +(Math.random() * 100).toFixed(2),
+        top: +(Math.random() * 100).toFixed(2),
+        size: Math.random() < 0.8 ? 1 : 2,
+        dur: 2.4 + Math.random() * 5,
+        delay: -(Math.random() * 8).toFixed(2),
+        peak: (0.4 + Math.random() * 0.55).toFixed(2),
+      })),
+    [],
+  );
   const dots = useMemo(
     () =>
-      Array.from({ length: 16 }, () => ({
+      Array.from({ length: 14 }, () => ({
         left: Math.round(Math.random() * 100),
         top: Math.round(Math.random() * 100),
         size: 2 + Math.round(Math.random() * 3),
@@ -17,10 +29,25 @@ function AppBackground() {
   );
   return (
     <div className="app-bg" aria-hidden="true">
-      <div className="grid" />
-      <div className="ring r1" />
-      <div className="ring r2" />
-      <div className="ring r3" />
+      <div className="nebula n1" />
+      <div className="nebula n2" />
+      <div className="nebula n3" />
+      <div className="starfield">
+        {stars.map((s, i) => (
+          <i
+            key={i}
+            style={{
+              left: `${s.left}%`,
+              top: `${s.top}%`,
+              width: s.size,
+              height: s.size,
+              '--twinkle-dur': `${s.dur}s`,
+              '--twinkle-delay': `${s.delay}s`,
+              '--twinkle-peak': s.peak,
+            }}
+          />
+        ))}
+      </div>
       <div className="particles">
         {dots.map((d, i) => (
           <i
@@ -36,6 +63,8 @@ function AppBackground() {
           />
         ))}
       </div>
+      <div className="shooting-star s1" />
+      <div className="shooting-star s2" />
     </div>
   );
 }

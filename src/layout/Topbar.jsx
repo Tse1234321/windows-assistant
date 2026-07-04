@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useTheme } from '../theme/ThemeProvider.jsx';
 import { useLocale } from '../i18n.jsx';
 
 function LineIcon({ children }) {
@@ -41,7 +40,6 @@ export default function Topbar({
   canBack,
   canForward,
 }) {
-  const { cycleTheme } = useTheme();
   const { language, setLanguage, t } = useLocale();
   const [unread, setUnread] = useState(0);
   const [profile, setProfile] = useState({ name: 'User', initials: 'US' });
@@ -182,16 +180,6 @@ export default function Topbar({
           <LineIcon>
             <circle cx="12" cy="12" r="3.5" />
             <path d="M12 3v2M12 19v2M4.2 7.5l1.7 1M18.1 15.5l1.7 1M4.2 16.5l1.7-1M18.1 8.5l1.7-1M3 12h2M19 12h2" />
-          </LineIcon>
-        </button>
-        <button
-          type="button"
-          className="tb-icon-btn"
-          onClick={cycleTheme}
-          title={t('shell.toggleTheme')}
-        >
-          <LineIcon>
-            <path d="M12 3a7 7 0 1 0 7 7 5 5 0 0 1-7-7z" />
           </LineIcon>
         </button>
         <button

@@ -55,6 +55,7 @@ export default function Dashboard({ onNavigate }) {
   const [loading, setLoading] = useState(() => !getCachedDashboardStats());
   const [error, setError] = useState('');
   const [selectedNode, setSelectedNode] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(null);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(DEFAULT_REFRESH_INTERVAL_MS);
 
   useEffect(() => {
@@ -73,37 +74,42 @@ export default function Dashboard({ onNavigate }) {
     };
   }, []);
 
-  const refresh = useCallback(async (options = {}) => {
-    const force = options.force === true;
-    if (!force && isDashboardCacheFresh(refreshIntervalMs)) {
-      const cached = getCachedDashboardStats();
-      if (cached) {
-        setData(cached);
-        setLoading(false);
-        return cached;
+  const refresh = useCallback(
+    async (options = {}) => {
+      const force = options.force === true;
+      if (!force && isDashboardCacheFresh(refreshIntervalMs)) {
+        const cached = getCachedDashboardStats();
+        if (cached) {
+          setData(cached);
+          setLoading(false);
+          return cached;
+        }
       }
-    }
 
-    setLoading((current) => current || !data || force);
-    const result = await getDashboardStats({ force, maxAgeMs: refreshIntervalMs }).catch((err) => ({
-      ok: false,
-      error: err.message,
-    }));
-    if (result?.ok) {
-      setData(result);
-      setError('');
-    } else {
-      setError(result?.error || 'Dashboard data is unavailable.');
-    }
-    setLoading(false);
-    return result;
-  }, [data, refreshIntervalMs]);
+      setLoading((current) => current || !data || force);
+      const result = await getDashboardStats({ force, maxAgeMs: refreshIntervalMs }).catch(
+        (err) => ({
+          ok: false,
+          error: err.message,
+        }),
+      );
+      if (result?.ok) {
+        setData(result);
+        setError('');
+      } else {
+        setError(result?.error || 'Dashboard data is unavailable.');
+      }
+      setLoading(false);
+      return result;
+    },
+    [data, refreshIntervalMs],
+  );
 
   usePollingEffect(refresh, refreshIntervalMs, [refresh, refreshIntervalMs]);
 
   const stats = useMemo(() => data?.stats || {}, [data?.stats]);
   const metrics = useMemo(() => data?.system?.metrics || {}, [data?.system?.metrics]);
-  const nodes = data?.nodes || [];
+  const nodes = useMemo(() => data?.nodes || [], [data?.nodes]);
   const storageNode = pickNode(nodes, 'system-storage');
   const tempNode = pickNode(nodes, 'cleanup-temp-files');
 
@@ -181,6 +187,29 @@ export default function Dashboard({ onNavigate }) {
     setSelectedNode(null);
   }, []);
 
+  const statusCounts = useMemo(() => {
+    const counts = { good: 0, normal: 0, warning: 0, danger: 0 };
+    for (const node of nodes) if (counts[node.status] != null) counts[node.status] += 1;
+    return counts;
+  }, [nodes]);
+
+  const toggleStatusFilter = useCallback((status) => {
+    setStatusFilter((current) => {
+      const next = new Set(current || []);
+      if (next.has(status)) next.delete(status);
+      else next.add(status);
+      if (!next.size || next.size >= 4) return null;
+      return [...next];
+    });
+  }, []);
+
+  const legendItems = [
+    ['good', t('dashboard.good')],
+    ['normal', t('dashboard.normal')],
+    ['warning', t('dashboard.attention')],
+    ['danger', t('dashboard.danger')],
+  ];
+
   return (
     <div className="dashboard-page-v3">
       <section className="dashboard-hero-v3 dashboard-command-head">
@@ -233,25 +262,30 @@ export default function Dashboard({ onNavigate }) {
               onNodeSelect={setSelectedNode}
               onNodeClear={handleNodeClear}
               onNodeOpen={handleNodeOpen}
+              liveMetrics={{
+                cpuPercent: metrics.cpu?.usagePercent,
+                memoryPercent: metrics.memory?.usagePercent,
+              }}
+              statusFilter={statusFilter}
             />
           </Suspense>
-          <div className="node-legend glass-card">
-            <span>
-              <i className="legend-good" />
-              {t('dashboard.good')}
-            </span>
-            <span>
-              <i className="legend-normal" />
-              {t('dashboard.normal')}
-            </span>
-            <span>
-              <i className="legend-warning" />
-              {t('dashboard.attention')}
-            </span>
-            <span>
-              <i className="legend-danger" />
-              {t('dashboard.danger')}
-            </span>
+          <div className="node-legend glass-card" title={t('dashboard.legendHint')}>
+            {legendItems.map(([status, label]) => {
+              const active = !statusFilter || statusFilter.includes(status);
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  className={`legend-chip${active ? '' : ' legend-chip-off'}`}
+                  aria-pressed={active}
+                  onClick={() => toggleStatusFilter(status)}
+                >
+                  <i className={`legend-${status}`} />
+                  {label}
+                  <em>{statusCounts[status]}</em>
+                </button>
+              );
+            })}
             <strong>
               {nodes.length} {t('dashboard.liveNodes')}
             </strong>

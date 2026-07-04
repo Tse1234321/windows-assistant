@@ -164,7 +164,7 @@ function Shell() {
       case 'downloads':
         return <FileOrganizer />;
       case 'cleanup':
-        return <CleanCenter />;
+        return <CleanCenter onNavigate={navigate} />;
       case 'security':
         return <SecurityCenter />;
       case 'setup':

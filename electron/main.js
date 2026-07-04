@@ -1353,9 +1353,16 @@ function registerIpc() {
       },
     }),
   );
-  ipcMain.handle('cleanup:cleanSelected', async (_event, payload = {}) => {
+  ipcMain.handle('cleanup:cleanSelected', async (event, payload = {}) => {
     const items = Array.isArray(payload) ? payload : payload.items;
-    return cleanupService.cleanSelectedFiles(items || [], payload.settings || {});
+    return cleanupService.cleanSelectedFiles(items || [], {
+      settings: payload.settings || {},
+      onProgress: (progress) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('cleanup:cleanProgress', progress);
+        }
+      },
+    });
   });
   ipcMain.handle('cleanup:getIgnoreList', async () => cleanupService.getIgnoreList());
   ipcMain.handle('cleanup:addIgnoreItem', async (_event, item) =>

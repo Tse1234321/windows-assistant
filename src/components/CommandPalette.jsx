@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useTheme } from '../theme/ThemeProvider.jsx';
 import { useToast } from './Toast.jsx';
 
 const PAGE_COMMANDS = [
@@ -252,7 +251,6 @@ function groupCommands(items) {
 }
 
 export default function CommandPalette({ open, onClose, onNavigate }) {
-  const { cycleTheme } = useTheme();
   const { toast } = useToast();
   const [backendCommands, setBackendCommands] = useState([]);
   const [query, setQuery] = useState('');
@@ -335,20 +333,9 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
           toast(result.paused ? '監控已暫停' : '監控已恢復', 'ok');
         },
       },
-      {
-        id: 'action.theme',
-        title: '切換深色/淺色主題',
-        hint: '循環切換系統、淺色、深色',
-        group: '動作',
-        keywords: ['theme', 'dark', 'light'],
-        run: () => {
-          cycleTheme();
-          toast('已切換主題', 'ok');
-        },
-      },
       ...PAGE_COMMANDS.map((command) => ({ ...command, run: () => onNavigate(command.page) })),
     ],
-    [onNavigate, cycleTheme, toast],
+    [onNavigate, toast],
   );
 
   useEffect(() => {

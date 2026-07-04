@@ -1531,6 +1531,7 @@ function shouldTreatAsSkipped(err) {
 
 async function cleanSelectedFiles(items = [], options = {}) {
   const startedAt = new Date();
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
   const loaded = await loadCleanupSettings();
   const settings = normalizeSettings({ ...(loaded.settings || {}), ...(options.settings || {}) });
   const selected = Array.isArray(items) ? items : [];
@@ -1540,6 +1541,20 @@ async function cleanSelectedFiles(items = [], options = {}) {
   let skipped = 0;
   let freedSize = 0;
   let highRiskProcessed = 0;
+  let processed = 0;
+  const reportCleanProgress = (fileName) => {
+    onProgress({
+      phase: 'Cleaning',
+      fileName: fileName || '',
+      done: processed,
+      total: selected.length,
+      freedSize,
+      cleaned,
+      skipped,
+      failed,
+    });
+  };
+  reportCleanProgress('');
 
   for (const item of selected) {
     const filePath = item.path;
@@ -1593,6 +1608,8 @@ async function cleanSelectedFiles(items = [], options = {}) {
         errorMessage: reason,
       });
     }
+    processed += 1;
+    reportCleanProgress(item.fileName || (filePath ? path.basename(filePath) : ''));
   }
 
   const finishedAt = new Date();

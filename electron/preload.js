@@ -29,6 +29,11 @@ const cleanupApi = {
     ipcRenderer.on('cleanup:scanProgress', handler);
     return () => ipcRenderer.removeListener('cleanup:scanProgress', handler);
   },
+  onCleanProgress: (callback) => {
+    const handler = (_event, progress) => callback(progress);
+    ipcRenderer.on('cleanup:cleanProgress', handler);
+    return () => ipcRenderer.removeListener('cleanup:cleanProgress', handler);
+  },
 };
 
 const securityApi = {
