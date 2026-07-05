@@ -7,7 +7,7 @@
 One place to launch projects, organize files, monitor system health, and keep daily development workflows tidy — without replacing your task manager or IDE.
 
 [![Clone](https://img.shields.io/badge/clone%20and%20build-ready-14b8a6.svg)](#install-on-your-pc)
-[![Version](https://img.shields.io/badge/version-2.4.0-2f7bf6.svg)](#)
+[![Version](https://img.shields.io/badge/version-2.5.4-2f7bf6.svg)](#)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d6.svg)](#requirements)
 [![Electron](https://img.shields.io/badge/Electron-42-47848f.svg)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
@@ -217,8 +217,8 @@ There are two ways to use PC Life Assistant locally.
 
 ### Option A: Install the packaged app
 
-1. Go to this repository's **Releases** page, if a release installer has been attached.
-2. Download `PC-Life-Assistant-Setup-2.4.0.exe`.
+1. Download the latest Windows installer: [PC-Life-Assistant-Setup-2.5.4.exe](https://github.com/Tse1234321/windows-assistant/releases/download/v2.5.4/PC-Life-Assistant-Setup-2.5.4.exe).
+2. If Windows SmartScreen appears, choose **More info** and confirm you trust the downloaded file.
 3. Run the installer.
 4. Launch **PC Life Assistant** from the Start menu or desktop shortcut.
 
@@ -266,7 +266,7 @@ npm run package
 The generated installer is written to:
 
 ```text
-release-auto\PC-Life-Assistant-Setup-2.4.0.exe
+release-auto\PC-Life-Assistant-Setup-2.5.4.exe
 ```
 
 Build outputs such as `dist/`, `release-auto/`, `node_modules/`, generated icons, logs, and real settings files are intentionally ignored by Git.
