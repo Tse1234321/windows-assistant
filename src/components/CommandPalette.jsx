@@ -139,14 +139,6 @@ const PAGE_COMMANDS = [
     keywords: ['rules', '規則'],
   },
   {
-    id: 'page.pdf',
-    title: '前往 PDF 工具',
-    hint: '合併、分割、轉換、壓縮、OCR（本機 Stirling-PDF）',
-    page: 'pdf',
-    group: '頁面',
-    keywords: ['pdf', 'stirling', '合併', '轉換'],
-  },
-  {
     id: 'page.toolchain',
     title: '前往工具鏈檢查',
     hint: 'Arduino、Verilog、VHDL、STM32 等編譯工具狀態',

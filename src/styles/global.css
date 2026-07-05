@@ -1459,6 +1459,28 @@ body {
   font-size: 12.5px;
 }
 
+.brightness-control {
+  min-width: 280px;
+}
+
+.brightness-control input[type='range'] {
+  min-width: 180px;
+  accent-color: var(--accent);
+}
+
+.brightness-control input[type='range']:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.brightness-value {
+  min-width: 44px;
+  color: var(--text-dim);
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12.5px;
+  text-align: right;
+}
+
 .rule-row {
   grid-template-columns: auto minmax(180px, 1fr) auto;
   padding: 12px 0;
@@ -3115,6 +3137,25 @@ body {
   .project-row,
   .rule-row {
     grid-template-columns: 1fr;
+  }
+
+  .setting-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .setting-row > div:last-child {
+    width: 100%;
+  }
+
+  .brightness-control {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .brightness-control input[type='range'] {
+    flex: 1;
+    min-width: 120px;
   }
 
   .settings-nav {

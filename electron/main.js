@@ -43,7 +43,7 @@ const buildService = require('./services/buildService');
 const serialService = require('./services/serialService');
 const dashboardService = require('./services/dashboardService');
 const overlayMetricsService = require('./services/overlayMetricsService');
-const stirlingService = require('./services/stirlingService');
+const brightnessService = require('./services/brightnessService');
 const { logger } = require('./services/loggerService');
 
 const isDev = !app.isPackaged;
@@ -372,8 +372,6 @@ function createWindow(showOnReady = true) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      // The PDF Tools page embeds the local Stirling-PDF UI in a <webview>.
-      webviewTag: true,
     },
   });
 
@@ -733,6 +731,34 @@ function registerIpc() {
     }
   });
 
+  ipcMain.handle('dashboard:browseNode', async (_event, targetPath) => {
+    try {
+      return await dashboardService.browseNodePath(targetPath);
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('dashboard:searchFolders', async (_event, query) => {
+    try {
+      return await dashboardService.searchFolderNodes(query);
+    } catch (err) {
+      return { ok: false, error: err.message, nodes: [] };
+    }
+  });
+
+  ipcMain.handle('shell:revealPath', async (_event, targetPath) => {
+    try {
+      if (!targetPath || !fs.existsSync(targetPath)) {
+        return { ok: false, error: 'Path not found.' };
+      }
+      shell.showItemInFolder(path.resolve(targetPath));
+      return { ok: true, path: targetPath };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('system:getStatus', async () => {
     try {
       const config = loadConfig();
@@ -927,29 +953,6 @@ function registerIpc() {
   );
   ipcMain.handle('build:cancel', async () => buildService.cancelBuild());
 
-  // PDF Tools — Stirling-PDF runtime/JAR provisioning + local server lifecycle.
-  ipcMain.handle('stirling:getStatus', async () => stirlingService.getStatus());
-  ipcMain.handle('stirling:downloadJre', async () =>
-    stirlingService.downloadJre((progress) => sendToRenderer('stirling:progress', progress)),
-  );
-  ipcMain.handle('stirling:downloadJar', async () =>
-    stirlingService.downloadJar((progress) => sendToRenderer('stirling:progress', progress)),
-  );
-  ipcMain.handle('stirling:start', async (_event, options = {}) =>
-    stirlingService.start(
-      options,
-      (line) => sendToRenderer('stirling:log', line),
-      (state) => sendToRenderer('stirling:status', state),
-    ),
-  );
-  ipcMain.handle('stirling:stop', async () => stirlingService.stop());
-  ipcMain.handle('stirling:openExternal', async () => {
-    const status = await stirlingService.getStatus();
-    const url = status.server && status.server.url;
-    if (url) shell.openExternal(url);
-    return { ok: !!url };
-  });
-
   // Serial Monitor — list ports and stream incoming data.
   ipcMain.handle('serial:listPorts', async () => serialService.listPorts());
   ipcMain.handle('serial:open', async (_event, payload = {}) =>
@@ -958,6 +961,9 @@ function registerIpc() {
   ipcMain.handle('serial:close', async () => serialService.closePort());
 
   ipcMain.handle('settings:get', async () => settingsService.getSettings());
+
+  ipcMain.handle('brightness:get', async () => brightnessService.getBrightness());
+  ipcMain.handle('brightness:set', async (_event, level) => brightnessService.setBrightness(level));
 
   ipcMain.handle('overlay:getSettings', async () => ({
     ok: true,
@@ -1798,10 +1804,4 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
-  // Don't leave the Stirling-PDF Java server orphaned after the app exits.
-  try {
-    stirlingService.stop();
-  } catch (_) {
-    /* ignore */
-  }
 });

@@ -26,7 +26,7 @@ One place to launch projects, organize files, monitor system health, and keep da
 
 ## ✨ Overview
 
-PC Life Assistant combines a daily workspace dashboard, project launcher, file organizer, system health monitor, automation rules, safe cleanup tools, a read-only Windows Security overview, a local PDF toolbox, and a gaming-style performance overlay into a single Electron app. The interface is branded **NEXUS** in-app and is fully **bilingual (English / 繁體中文)** with a language switch in Settings.
+PC Life Assistant combines a daily workspace dashboard, project launcher, file organizer, system health monitor, automation rules, safe cleanup tools, a read-only Windows Security overview, and a gaming-style performance overlay into a single Electron app. The interface is branded **NEXUS** in-app and is fully **bilingual (English / 繁體中文)** with a language switch in Settings.
 
 The goal is not to be another todo list — it's to **remove the small repeated steps** around everyday computer work: opening the same folders and tools, sorting the Downloads folder, keeping an eye on disk space and temperatures, and remembering which projects still need a Git commit.
 
@@ -49,7 +49,6 @@ The goal is not to be another todo list — it's to **remove the small repeated 
 | **Workspace Templates**  | Generates starter folders for Web, Python, JS/TS, C/C++, Java, Go, Rust, Arduino, FPGA (Verilog/VHDL), STM32, MATLAB, KiCad, and custom multi-language combos.                                                                                                                     |
 | **Clean Center**         | Reviews temp files, caches, large files, duplicates, downloads, and recycle bin — with conservative safety rules and confirm-before-action.                                                                                                                                        |
 | **Security Center**      | A read-only mirror of Windows Security status — Microsoft Defender, firewall profiles, TPM, BitLocker, and more — gathered with non-elevated PowerShell queries. It never changes security settings; it only reports them.                                                          |
-| **PDF Tools**            | A full PDF toolbox (merge, split, rotate, compress, convert, and more) powered by an embedded local [Stirling-PDF](https://github.com/Stirling-Tools/Stirling-PDF) instance. The Java runtime and app are downloaded on demand on first use, and everything runs locally.          |
 | **Downloads Organizer**  | Scans Downloads, previews planned moves, classifies by rules, never overwrites, and keeps a restore option.                                                                                                                                                                        |
 | **Screenshot Organizer** | Groups screenshots by date and category using configurable keyword rules.                                                                                                                                                                                                          |
 | **System Monitor**       | Live CPU / RAM / disk / uptime, CPU & GPU temperatures, trend sparklines, and a tunable Health Guard.                                                                                                                                                                              |
@@ -185,7 +184,6 @@ pc-life-assistant/
 | Screenshots         | Scan and organize screenshot images by date and category.                                                             |
 | Clean Center        | Review cleanup candidates and safe maintenance suggestions.                                                           |
 | Security Center     | Read-only Windows Security overview: Defender, firewall, TPM, BitLocker, and related status.                          |
-| PDF Tools           | Merge, split, convert, and edit PDFs locally via an embedded Stirling-PDF instance.                                   |
 | Automations         | Configure scheduled reminders and safe helper actions.                                                                |
 | System Monitor      | Inspect live hardware and resource status.                                                                            |
 | Health Monitor      | Review health checks, recommendations, and guard settings.                                                            |
@@ -210,7 +208,6 @@ pc-life-assistant/
 - Git, if you want to clone the source code instead of downloading a ZIP.
 - VS Code is optional but recommended for project launching features.
 - Optional, for the System Overlay only: Intel PresentMon or NVIDIA FrameView for the in-game FPS counter, and an NVIDIA GPU with `nvidia-smi` for GPU usage / VRAM. The overlay degrades gracefully and shows "N/A" when these are unavailable.
-- Optional, for PDF Tools only: internet access on first use, to download the embedded Java runtime and Stirling-PDF. After that, PDF processing runs fully locally.
 
 ---
 

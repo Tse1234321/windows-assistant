@@ -1,7 +1,7 @@
 # AGENTS.md - PC Life Assistant
 
 ## Project Overview
-- Purpose: Windows desktop assistant for file organization, project shortcuts, automations, system monitoring, PDF tools, workflow editing, updates, and security checks.
+- Purpose: Windows desktop assistant for file organization, project shortcuts, automations, system monitoring, workflow editing, updates, and security checks.
 - Stack: Electron, React 18, TypeScript/JavaScript, Vite, Vitest, Playwright, ESLint, Prettier, Three.js.
 - Runtime / package manager: Node.js with npm.
 

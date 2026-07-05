@@ -20,6 +20,17 @@ const SCAN_LIMITS = {
   maxDirs: 900,
 };
 
+const BROWSE_LIMITS = {
+  maxFolders: 80,
+  maxFiles: 220,
+};
+
+const SEARCH_LIMITS = {
+  maxResults: 30,
+  maxDepth: 6,
+  maxDirs: 1500,
+};
+
 const SKIP_DIRS = new Set([
   '.git',
   'node_modules',
@@ -96,6 +107,17 @@ function safeAppPath(name, fallbackName) {
     /* fall through */
   }
   return path.join(os.homedir(), fallbackName);
+}
+
+function dashboardFolderDefs() {
+  return [
+    ['desktop', 'Desktop', safeAppPath('desktop', 'Desktop'), 'files'],
+    ['downloads', 'Downloads', safeAppPath('downloads', 'Downloads'), 'files'],
+    ['documents', 'Documents', safeAppPath('documents', 'Documents'), 'files'],
+    ['pictures', 'Pictures', safeAppPath('pictures', 'Pictures'), 'files'],
+    ['videos', 'Videos', safeAppPath('videos', 'Videos'), 'files'],
+    ['music', 'Music', safeAppPath('music', 'Music'), 'files'],
+  ];
 }
 
 function statusForPercent(percent) {
@@ -197,6 +219,66 @@ async function scanFolder(folderPath, label) {
   return stats;
 }
 
+async function browseNodePath(targetPath) {
+  const resolved = path.resolve(String(targetPath || ''));
+  const rootStat = await statSafe(resolved);
+  if (!rootStat || !rootStat.isDirectory()) {
+    return { ok: false, error: 'Path is not a browsable folder.' };
+  }
+  const entries = await readDirSafe(resolved);
+  if (!entries) {
+    return { ok: false, error: 'Folder could not be read.' };
+  }
+
+  const folders = [];
+  const files = [];
+  let truncated = false;
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (folders.length >= BROWSE_LIMITS.maxFolders) {
+        truncated = true;
+        continue;
+      }
+      folders.push({ name: entry.name, path: path.join(resolved, entry.name) });
+    } else if (entry.isFile()) {
+      if (files.length >= BROWSE_LIMITS.maxFiles) {
+        truncated = true;
+        continue;
+      }
+      files.push({ name: entry.name, path: path.join(resolved, entry.name) });
+    }
+  }
+
+  await Promise.all(
+    folders.map(async (folder) => {
+      const children = await readDirSafe(folder.path);
+      folder.itemCount = children ? children.length : null;
+      const stat = await statSafe(folder.path);
+      folder.updatedAt = stat ? stat.mtime.toISOString() : '';
+    }),
+  );
+  await Promise.all(
+    files.map(async (file) => {
+      const stat = await statSafe(file.path);
+      file.sizeBytes = stat ? stat.size : null;
+      file.updatedAt = stat ? stat.mtime.toISOString() : '';
+      file.ext = path.extname(file.name).toLowerCase();
+    }),
+  );
+
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+  files.sort((a, b) => Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0));
+
+  return {
+    ok: true,
+    path: resolved,
+    name: path.basename(resolved) || resolved,
+    folders,
+    files,
+    truncated,
+  };
+}
+
 function node(input) {
   return {
     id: input.id,
@@ -210,6 +292,146 @@ function node(input) {
     updatedAt: input.updatedAt || '',
     route: input.route || 'dashboard',
     meta: input.meta || {},
+  };
+}
+
+function normalizeFolderSearch(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\\/g, '/')
+    .trim();
+}
+
+function searchResultId(folderPath) {
+  const encoded = Buffer.from(String(folderPath || ''), 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+  return `folder-search-${encoded.slice(0, 48)}`;
+}
+
+async function immediateItemCount(folderPath) {
+  const entries = await readDirSafe(folderPath);
+  return entries ? entries.length : null;
+}
+
+function folderSearchNode(match, stat, itemCount) {
+  return node({
+    id: searchResultId(match.path),
+    label: match.name,
+    type: 'file',
+    value: itemCount || 1,
+    count: itemCount,
+    status: 'normal',
+    path: match.path,
+    updatedAt: stat ? stat.mtime.toISOString() : '',
+    route: 'files',
+    meta: {
+      folder: true,
+      rootLabel: match.rootLabel,
+      searchResult: true,
+    },
+  });
+}
+
+async function searchFolderNodes(query) {
+  const normalized = normalizeFolderSearch(query);
+  if (!normalized) {
+    return { ok: true, query: '', nodes: [], truncated: false, searchedDirs: 0 };
+  }
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  const matches = [];
+  const seen = new Set();
+  let searchedDirs = 0;
+  let truncated = false;
+
+  async function walk(rootPath, rootLabel, currentPath, depth) {
+    if (searchedDirs >= SEARCH_LIMITS.maxDirs) {
+      truncated = true;
+      return;
+    }
+
+    const entries = await readDirSafe(currentPath);
+    if (!entries) return;
+
+    for (const entry of entries) {
+      if (searchedDirs >= SEARCH_LIMITS.maxDirs) {
+        truncated = true;
+        return;
+      }
+      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      if (SKIP_DIRS.has(entry.name.toLowerCase())) continue;
+
+      const resolved = path.resolve(path.join(currentPath, entry.name));
+      const pathKey = resolved.toLowerCase();
+      if (seen.has(pathKey)) continue;
+      seen.add(pathKey);
+      searchedDirs += 1;
+
+      const relative = normalizeFolderSearch(path.relative(rootPath, resolved));
+      const label = normalizeFolderSearch(entry.name);
+      const fullPath = normalizeFolderSearch(resolved);
+      const corpus = `${label} ${relative} ${fullPath} ${normalizeFolderSearch(rootLabel)}`;
+
+      if (tokens.every((token) => corpus.includes(token))) {
+        let score = 10;
+        if (label === normalized) score += 120;
+        else if (label.startsWith(normalized)) score += 90;
+        else if (label.includes(normalized)) score += 60;
+        if (relative.startsWith(normalized)) score += 40;
+        if (relative.includes(normalized) || fullPath.includes(normalized)) score += 24;
+        score -= depth * 3;
+
+        matches.push({
+          path: resolved,
+          name: entry.name,
+          rootLabel,
+          depth,
+          score,
+        });
+      }
+
+      if (depth < SEARCH_LIMITS.maxDepth) {
+        await walk(rootPath, rootLabel, resolved, depth + 1);
+      }
+    }
+  }
+
+  for (const [, label, folderPath] of dashboardFolderDefs()) {
+    const resolvedRoot = path.resolve(folderPath);
+    const rootStat = await statSafe(resolvedRoot);
+    if (!rootStat || !rootStat.isDirectory()) continue;
+    await walk(resolvedRoot, label, resolvedRoot, 1);
+    if (searchedDirs >= SEARCH_LIMITS.maxDirs) break;
+  }
+
+  const selected = matches
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.depth - b.depth ||
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+    )
+    .slice(0, SEARCH_LIMITS.maxResults);
+
+  const nodes = await Promise.all(
+    selected.map(async (match) => {
+      const [stat, itemCount] = await Promise.all([
+        statSafe(match.path),
+        immediateItemCount(match.path),
+      ]);
+      return folderSearchNode(match, stat, itemCount);
+    }),
+  );
+
+  return {
+    ok: true,
+    query: normalized,
+    nodes,
+    truncated: truncated || matches.length > selected.length,
+    searchedDirs,
   };
 }
 
@@ -283,14 +505,7 @@ function aggregateExtensionGroups(folderStats) {
 }
 
 async function getFileCategoryStats(cleanup) {
-  const folderDefs = [
-    ['desktop', 'Desktop', safeAppPath('desktop', 'Desktop'), 'files'],
-    ['downloads', 'Downloads', safeAppPath('downloads', 'Downloads'), 'files'],
-    ['documents', 'Documents', safeAppPath('documents', 'Documents'), 'files'],
-    ['pictures', 'Pictures', safeAppPath('pictures', 'Pictures'), 'files'],
-    ['videos', 'Videos', safeAppPath('videos', 'Videos'), 'files'],
-    ['music', 'Music', safeAppPath('music', 'Music'), 'files'],
-  ];
+  const folderDefs = dashboardFolderDefs();
 
   const folderStats = await Promise.all(
     folderDefs.map(([, label, folderPath]) => scanFolder(folderPath, label)),
@@ -629,7 +844,9 @@ async function getDashboardStats(config) {
 }
 
 module.exports = {
+  browseNodePath,
   getDashboardStats,
   getFileCategoryStats,
   getProjectStats,
+  searchFolderNodes,
 };

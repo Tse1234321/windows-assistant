@@ -61,12 +61,48 @@ export default function Settings() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [configPath, setConfigPath] = useState('');
   const [systemStatus, setSystemStatus] = useState(null);
+  const [brightnessStatus, setBrightnessStatus] = useState({
+    loading: false,
+    supported: false,
+    level: 50,
+    method: 'none',
+    error: '',
+  });
+  const [brightnessDraft, setBrightnessDraft] = useState(50);
+  const [brightnessSaving, setBrightnessSaving] = useState(false);
 
   const general = settings?.general || {};
   const guard = settings?.healthGuard || {};
   const cleanup = settings?.cleanup || {};
   const overlay = settings?.overlay || {};
   const projectHub = settings?.projectHub || {};
+
+  const loadBrightness = useCallback(async () => {
+    if (!api?.getBrightness) return;
+    setBrightnessStatus((current) => ({ ...current, loading: true, error: '' }));
+    try {
+      const result = await api.getBrightness();
+      const nextLevel =
+        result?.level !== null && result?.level !== undefined && Number.isFinite(Number(result.level))
+        ? Math.max(0, Math.min(100, Math.round(Number(result.level))))
+        : 50;
+      setBrightnessDraft(nextLevel);
+      setBrightnessStatus({
+        loading: false,
+        supported: result?.supported === true,
+        level: nextLevel,
+        method: result?.method || 'none',
+        error: result?.error || '',
+      });
+    } catch (err) {
+      setBrightnessStatus((current) => ({
+        ...current,
+        loading: false,
+        supported: false,
+        error: err?.message || '亮度狀態讀取失敗。',
+      }));
+    }
+  }, [api]);
 
   const load = useCallback(async () => {
     if (!apiAvailable) return;
@@ -77,7 +113,8 @@ export default function Settings() {
     if (autoLaunch?.ok) setAutoLaunchSupported(autoLaunch.supported);
     const status = await api.getSystemStatus?.();
     if (status?.ok) setSystemStatus(status);
-  }, [api, apiAvailable]);
+    loadBrightness();
+  }, [api, apiAvailable, loadBrightness]);
 
   useEffect(() => {
     load();
@@ -93,6 +130,44 @@ export default function Settings() {
   const saveGeneral = async (patch) => {
     const next = { ...settings, general: { ...general, ...patch } };
     await saveAll(next);
+  };
+
+  const applyBrightness = async () => {
+    const target = Math.max(0, Math.min(100, Math.round(Number(brightnessDraft) || 0)));
+    setBrightnessSaving(true);
+    setBrightnessStatus((current) => ({ ...current, error: '' }));
+    try {
+      const result = await window.api.setBrightness(target);
+      const nextLevel =
+        result?.level !== null && result?.level !== undefined && Number.isFinite(Number(result.level))
+          ? Number(result.level)
+          : target;
+      setBrightnessDraft(nextLevel);
+      setBrightnessStatus({
+        loading: false,
+        supported: result?.supported === true,
+        level: nextLevel,
+        method: result?.method || 'none',
+        error: result?.error || '',
+      });
+      toast(
+        result?.ok
+          ? `亮度已調整為 ${nextLevel}%`
+          : result?.error || '這台螢幕沒有開放 Windows 亮度控制。',
+        result?.ok ? 'ok' : 'warn',
+      );
+    } catch (err) {
+      const message = err?.message || '亮度調整失敗。';
+      setBrightnessStatus((current) => ({
+        ...current,
+        loading: false,
+        supported: false,
+        error: message,
+      }));
+      toast(message, 'error');
+    } finally {
+      setBrightnessSaving(false);
+    }
   };
 
   const saveCleanup = async (patch) => {
@@ -217,6 +292,26 @@ export default function Settings() {
     if (result.ok) load();
   };
 
+  const brightnessMethod =
+    brightnessStatus.method === 'ddcci'
+      ? 'DDC/CI'
+      : brightnessStatus.method === 'wmi'
+        ? 'WMI'
+        : brightnessStatus.method === 'ddcci+wmi'
+          ? 'DDC/CI + WMI'
+          : '';
+  const brightnessError =
+    brightnessStatus.error === 'No brightness controller was found.'
+      ? '目前螢幕沒有開放 Windows 亮度控制，可能需要在螢幕 OSD 啟用 DDC/CI。'
+      : brightnessStatus.error;
+  const brightnessDescription = brightnessStatus.loading
+    ? '正在讀取 Windows 顯示亮度...'
+    : brightnessStatus.supported
+      ? `使用 ${brightnessMethod || 'Windows'} 控制目前顯示器。`
+      : brightnessError || '目前螢幕沒有開放 Windows 亮度控制，可能需要在螢幕 OSD 啟用 DDC/CI。';
+  const brightnessDisabled =
+    brightnessStatus.loading || brightnessSaving || brightnessStatus.supported !== true;
+
   if (!apiAvailable) {
     return (
       <div>
@@ -337,6 +432,40 @@ export default function Settings() {
               </Row>
               <Row label="緊湊模式" desc="降低間距，讓列表與工具頁顯示更多資料。">
                 <Toggle checked={compact} onChange={setCompact} />
+              </Row>
+              <Row label="螢幕亮度" desc={brightnessDescription}>
+                <div className="inline-controls brightness-control">
+                  <input
+                    aria-label="調整螢幕亮度"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={brightnessDraft}
+                    disabled={brightnessDisabled}
+                    onChange={(event) => setBrightnessDraft(Number(event.target.value))}
+                    onMouseUp={applyBrightness}
+                    onTouchEnd={applyBrightness}
+                    onKeyUp={(event) => {
+                      if (
+                        ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(
+                          event.key,
+                        )
+                      ) {
+                        applyBrightness();
+                      }
+                    }}
+                  />
+                  <span className="brightness-value">{Math.round(brightnessDraft)}%</span>
+                  <Button
+                    size="sm"
+                    onClick={applyBrightness}
+                    disabled={brightnessDisabled}
+                    busy={brightnessSaving || brightnessStatus.loading}
+                  >
+                    套用
+                  </Button>
+                </div>
               </Row>
               <Row label="測試通知">
                 <Button size="sm" onClick={() => window.api.testNotification()}>

@@ -86,6 +86,9 @@ const setupToolsApi = {
 contextBridge.exposeInMainWorld('api', {
   // System / health
   getDashboardStats: () => ipcRenderer.invoke('dashboard:getStats'),
+  browseDashboardNode: (targetPath) => ipcRenderer.invoke('dashboard:browseNode', targetPath),
+  searchDashboardFolders: (query) => ipcRenderer.invoke('dashboard:searchFolders', query),
+  revealPath: (targetPath) => ipcRenderer.invoke('shell:revealPath', targetPath),
   getSystemStatus: () => ipcRenderer.invoke('system:getStatus'),
 
   // Quick modes
@@ -187,31 +190,6 @@ contextBridge.exposeInMainWorld('api', {
   adminLaunch: adminLaunchApi,
   setupTools: setupToolsApi,
 
-  // PDF Tools (embedded Stirling-PDF)
-  stirling: {
-    getStatus: () => ipcRenderer.invoke('stirling:getStatus'),
-    downloadJre: () => ipcRenderer.invoke('stirling:downloadJre'),
-    download: () => ipcRenderer.invoke('stirling:downloadJar'),
-    start: (options) => ipcRenderer.invoke('stirling:start', options),
-    stop: () => ipcRenderer.invoke('stirling:stop'),
-    openExternal: () => ipcRenderer.invoke('stirling:openExternal'),
-    onProgress: (callback) => {
-      const handler = (_event, progress) => callback(progress);
-      ipcRenderer.on('stirling:progress', handler);
-      return () => ipcRenderer.removeListener('stirling:progress', handler);
-    },
-    onStatus: (callback) => {
-      const handler = (_event, state) => callback(state);
-      ipcRenderer.on('stirling:status', handler);
-      return () => ipcRenderer.removeListener('stirling:status', handler);
-    },
-    onLog: (callback) => {
-      const handler = (_event, line) => callback(line);
-      ipcRenderer.on('stirling:log', handler);
-      return () => ipcRenderer.removeListener('stirling:log', handler);
-    },
-  },
-
   // System overlay
   overlay: {
     getSettings: () => ipcRenderer.invoke('overlay:getSettings'),
@@ -242,6 +220,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  getBrightness: () => ipcRenderer.invoke('brightness:get'),
+  setBrightness: (level) => ipcRenderer.invoke('brightness:set', level),
   getSetupStatus: () => ipcRenderer.invoke('settings:getSetupStatus'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   openSettingsFile: () => ipcRenderer.invoke('settings:openFile'),

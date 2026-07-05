@@ -51,6 +51,8 @@ interface AppApi {
   antivirus?: AntivirusApi;
   adminLaunch?: AdminLaunchApi;
   setupTools?: SetupToolsApi;
+  getBrightness?: () => Promise<any>;
+  setBrightness?: (level: number) => Promise<any>;
   openExternal?: (url: string) => Promise<any>;
   pickPath?: (opts: { type: 'file' | 'folder'; title?: string }) => Promise<{ ok?: boolean; path?: string; canceled?: boolean; error?: string }>;
   [key: string]: unknown;

@@ -22,6 +22,9 @@ const TYPE_COLORS = {
   automation: 0x22d3ee,
 };
 
+const GLOBE_Y_OFFSET = -0.32;
+const CAMERA_DISTANCE = 6.35;
+
 function hash(input) {
   return String(input || '')
     .split('')
@@ -57,6 +60,79 @@ function makeGlowTexture() {
   gradient.addColorStop(1, 'rgba(56,189,248,0)');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 96, 96);
+  return new THREE.CanvasTexture(canvas);
+}
+
+function makeFolderTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+
+  const glow = ctx.createRadialGradient(64, 64, 8, 64, 64, 62);
+  glow.addColorStop(0, 'rgba(255,255,255,0.34)');
+  glow.addColorStop(0.6, 'rgba(255,255,255,0.1)');
+  glow.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, 128, 128);
+
+  const body = ctx.createLinearGradient(0, 46, 0, 96);
+  body.addColorStop(0, 'rgba(255,255,255,0.98)');
+  body.addColorStop(1, 'rgba(214,240,255,0.88)');
+
+  // Folder tab
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(34, 52);
+  ctx.lineTo(34, 44);
+  ctx.quadraticCurveTo(34, 40, 38, 40);
+  ctx.lineTo(56, 40);
+  ctx.quadraticCurveTo(60, 40, 62, 44);
+  ctx.lineTo(66, 52);
+  ctx.closePath();
+  ctx.fill();
+
+  // Folder body
+  ctx.beginPath();
+  ctx.moveTo(30, 56);
+  ctx.quadraticCurveTo(30, 50, 36, 50);
+  ctx.lineTo(92, 50);
+  ctx.quadraticCurveTo(98, 50, 98, 56);
+  ctx.lineTo(98, 88);
+  ctx.quadraticCurveTo(98, 94, 92, 94);
+  ctx.lineTo(36, 94);
+  ctx.quadraticCurveTo(30, 94, 30, 88);
+  ctx.closePath();
+  ctx.fill();
+
+  // Document lines etched into the folder front
+  ctx.strokeStyle = 'rgba(9, 36, 74, 0.4)';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  [64, 72, 80].forEach((y, index) => {
+    ctx.beginPath();
+    ctx.moveTo(40, y);
+    ctx.lineTo(40 + 40 - index * 10, y);
+    ctx.stroke();
+  });
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+function makeBeamTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 32;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+  gradient.addColorStop(0, 'rgba(255,255,255,0)');
+  gradient.addColorStop(0.12, 'rgba(255,255,255,0.55)');
+  gradient.addColorStop(0.42, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.62, 'rgba(255,255,255,0.9)');
+  gradient.addColorStop(0.9, 'rgba(255,255,255,0.4)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 32, 256);
   return new THREE.CanvasTexture(canvas);
 }
 
@@ -189,6 +265,184 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+const FILE_KIND_MAP = [
+  [['.pdf'], 'doc', 'PDF'],
+  [['.doc', '.docx', '.rtf', '.txt', '.md'], 'doc', 'DOC'],
+  [['.xls', '.xlsx', '.csv'], 'sheet', 'XLS'],
+  [['.ppt', '.pptx'], 'doc', 'PPT'],
+  [['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.tif', '.tiff', '.heic'], 'img', 'IMG'],
+  [['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.m4v'], 'media', 'VID'],
+  [['.mp3', '.wav', '.flac', '.aac', '.m4a', '.ogg'], 'media', 'AUD'],
+  [['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz'], 'zip', 'ZIP'],
+  [
+    ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.py', '.java', '.cpp', '.c', '.h', '.hpp', '.cs', '.go', '.rs', '.html', '.css', '.json', '.yml', '.yaml', '.ps1', '.sh'],
+    'code',
+    'CODE',
+  ],
+];
+
+function fileKind(ext) {
+  const value = String(ext || '').toLowerCase();
+  for (const [exts, cls, label] of FILE_KIND_MAP) {
+    if (exts.includes(value)) return { cls, label };
+  }
+  const raw = value.replace('.', '').toUpperCase();
+  return { cls: 'file', label: raw ? raw.slice(0, 4) : 'FILE' };
+}
+
+function normalizeSearch(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\\/g, '/')
+    .trim();
+}
+
+function nodeSearchScore(node, query) {
+  if (!query) return 0;
+  const label = normalizeSearch(node.label);
+  const pathValue = normalizeSearch(node.path);
+  const type = normalizeSearch(node.type);
+  const status = normalizeSearch(node.status);
+  const corpus = `${label} ${pathValue} ${type} ${status}`;
+  const tokens = query.split(/\s+/).filter(Boolean);
+  if (!tokens.every((token) => corpus.includes(token))) return 0;
+  let score = 10;
+  if (label === query) score += 90;
+  else if (label.startsWith(query)) score += 70;
+  else if (label.includes(query)) score += 50;
+  if (pathValue.includes(query)) score += 35;
+  if (type.includes(query) || status.includes(query)) score += 12;
+  return score + Math.min(20, getNodeValue(node) / 100);
+}
+
+function nodeSearchKey(node) {
+  return normalizeSearch(node?.path) || String(node?.id || '');
+}
+
+function DirListing({ dirPath, depth, t }) {
+  const [state, setState] = useState({
+    loading: true,
+    error: '',
+    folders: [],
+    files: [],
+    truncated: false,
+  });
+  const [openFolders, setOpenFolders] = useState(() => new Set());
+
+  useEffect(() => {
+    let alive = true;
+    setState((current) => ({ ...current, loading: true, error: '' }));
+    setOpenFolders(new Set());
+    const request = window.api?.browseDashboardNode?.(dirPath);
+    if (!request) {
+      setState({
+        loading: false,
+        error: t('dashboard.browseFailed'),
+        folders: [],
+        files: [],
+        truncated: false,
+      });
+      return undefined;
+    }
+    request
+      .then((result) => {
+        if (!alive) return;
+        if (result?.ok) {
+          setState({
+            loading: false,
+            error: '',
+            folders: result.folders || [],
+            files: result.files || [],
+            truncated: Boolean(result.truncated),
+          });
+        } else {
+          setState({
+            loading: false,
+            error: result?.error || t('dashboard.browseFailed'),
+            folders: [],
+            files: [],
+            truncated: false,
+          });
+        }
+      })
+      .catch((err) => {
+        if (alive)
+          setState({ loading: false, error: err.message, folders: [], files: [], truncated: false });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [dirPath, t]);
+
+  if (state.loading) return <div className="tree-note">{t('dashboard.loadingContents')}</div>;
+  if (state.error) return <div className="tree-note tree-note-error">{state.error}</div>;
+  if (!state.folders.length && !state.files.length)
+    return <div className="tree-note">{t('dashboard.emptyFolder')}</div>;
+
+  const toggleFolder = (folderPath) => {
+    setOpenFolders((current) => {
+      const next = new Set(current);
+      if (next.has(folderPath)) next.delete(folderPath);
+      else next.add(folderPath);
+      return next;
+    });
+  };
+
+  return (
+    <ul className="globe-tree-list">
+      {state.folders.map((folder) => {
+        const open = openFolders.has(folder.path);
+        return (
+          <li key={folder.path}>
+            <button
+              type="button"
+              className="tree-row tree-row-folder"
+              onClick={() => toggleFolder(folder.path)}
+              disabled={depth >= 4}
+              title={folder.path}
+            >
+              <i className={`tree-caret${open ? ' tree-caret-open' : ''}`} />
+              <span className="tree-glyph-folder" />
+              <span className="tree-name">{folder.name}</span>
+              {folder.itemCount != null ? <em>{folder.itemCount}</em> : null}
+            </button>
+            {open ? (
+              <div className="tree-children">
+                <DirListing dirPath={folder.path} depth={depth + 1} t={t} />
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+      {state.files.map((file) => {
+        const kind = fileKind(file.ext);
+        return (
+          <li key={file.path}>
+            <button
+              type="button"
+              className="tree-row tree-row-file"
+              onClick={() =>
+                (window.api?.revealPath || window.api?.openPath)?.(file.path)
+              }
+              title={file.path}
+            >
+              <span className={`tree-chip tree-chip-${kind.cls}`}>{kind.label}</span>
+              <span className="tree-file-main">
+                <span className="tree-name">{file.name}</span>
+                <span className="tree-meta">
+                  {file.sizeBytes != null ? formatBytes(file.sizeBytes) : '--'}
+                  {file.updatedAt ? ` · ${new Date(file.updatedAt).toLocaleDateString()}` : ''}
+                </span>
+              </span>
+            </button>
+          </li>
+        );
+      })}
+      {state.truncated ? <li className="tree-note">{t('dashboard.moreItems')}</li> : null}
+    </ul>
+  );
+}
+
 export default function DashboardGlobe({
   nodes = [],
   loading = false,
@@ -199,7 +453,7 @@ export default function DashboardGlobe({
   liveMetrics = null,
   statusFilter = null,
 }) {
-  const { t } = useLocale();
+  const { t, language } = useLocale();
   const stageRef = useRef(null);
   const selectedNodeIdRef = useRef(selectedNode?.id || null);
   const liveMetricsRef = useRef({});
@@ -207,20 +461,162 @@ export default function DashboardGlobe({
   const [hasWebGl, setHasWebGl] = useState(true);
   const [hovered, setHovered] = useState(null);
   const [selectedAnchor, setSelectedAnchor] = useState(null);
+  const [searchText, setSearchText] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+  const [folderSearch, setFolderSearch] = useState({
+    query: '',
+    loading: false,
+    nodes: [],
+    error: '',
+  });
   const [viewport, setViewport] = useState(() => ({
     width: typeof window === 'undefined' ? 1280 : window.innerWidth,
     height: typeof window === 'undefined' ? 720 : window.innerHeight,
   }));
 
   const displayNodes = useMemo(() => {
-    return [...nodes]
+    const ranked = [...nodes]
       .sort(
         (a, b) =>
           (STATUS_ORDER[b.status] || 0) - (STATUS_ORDER[a.status] || 0) ||
           getNodeValue(b) - getNodeValue(a),
       )
       .slice(0, 34);
-  }, [nodes]);
+    const selectedVisible = selectedNode?.id
+      ? ranked.some((node) => node.id === selectedNode.id)
+      : true;
+    if (selectedVisible || !selectedNode?.id) return ranked;
+    const selectedFromAllNodes = nodes.find((node) => node.id === selectedNode.id);
+    if (!selectedFromAllNodes) {
+      return [selectedNode, ...ranked.filter((node) => node.id !== selectedNode.id).slice(0, 33)];
+    }
+    return [selectedFromAllNodes, ...ranked.filter((node) => node.id !== selectedNode.id).slice(0, 33)];
+  }, [nodes, selectedNode]);
+
+  const searchCopy =
+    language === 'zh'
+      ? {
+          label: '搜尋地球節點',
+          placeholder: '搜尋檔案、資料夾或專案...',
+          hint: '按 Enter 選取第一筆',
+          noResults: '找不到符合的節點',
+          clear: '清除搜尋',
+        }
+      : {
+          label: 'Search globe nodes',
+          placeholder: 'Search files, folders, or projects...',
+          hint: 'Press Enter to select the first result',
+          noResults: 'No matching nodes',
+          clear: 'Clear search',
+        };
+
+  useEffect(() => {
+    const query = normalizeSearch(searchText);
+    if (!query) {
+      setFolderSearch({ query: '', loading: false, nodes: [], error: '' });
+      return undefined;
+    }
+
+    const searchApi = window.api?.searchDashboardFolders;
+    if (!searchApi) {
+      setFolderSearch({ query, loading: false, nodes: [], error: '' });
+      return undefined;
+    }
+
+    let alive = true;
+    setFolderSearch((current) => ({
+      query,
+      loading: true,
+      nodes: current.query === query ? current.nodes : [],
+      error: '',
+    }));
+
+    const timer = window.setTimeout(() => {
+      searchApi(searchText)
+        .then((result) => {
+          if (!alive) return;
+          if (result?.ok) {
+            setFolderSearch({
+              query,
+              loading: false,
+              nodes: result.nodes || [],
+              error: '',
+            });
+          } else {
+            setFolderSearch({
+              query,
+              loading: false,
+              nodes: [],
+              error: result?.error || '',
+            });
+          }
+        })
+        .catch((err) => {
+          if (!alive) return;
+          setFolderSearch({ query, loading: false, nodes: [], error: err.message });
+        });
+    }, 220);
+
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [searchText]);
+
+  const searchResults = useMemo(() => {
+    const query = normalizeSearch(searchText);
+    if (!query) return [];
+    const localResults = nodes
+      .map((node) => ({ node, score: nodeSearchScore(node, query) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 7)
+      .map((item) => item.node);
+    const folderResults = folderSearch.query === query ? folderSearch.nodes || [] : [];
+    const merged = [];
+    const seen = new Set();
+    [...localResults, ...folderResults].forEach((node) => {
+      const key = nodeSearchKey(node);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      merged.push(node);
+    });
+    return merged.slice(0, 9);
+  }, [folderSearch.nodes, folderSearch.query, nodes, searchText]);
+
+  useEffect(() => {
+    setActiveSearchIndex((current) => clamp(current, 0, Math.max(0, searchResults.length - 1)));
+  }, [searchResults.length]);
+
+  const selectSearchNode = (node) => {
+    if (!node) return;
+    onNodeSelect?.(node);
+    setSearchText(node.label || '');
+    setSearchOpen(false);
+    setActiveSearchIndex(0);
+  };
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    selectSearchNode(searchResults[activeSearchIndex] || searchResults[0]);
+  };
+
+  const handleSearchKeyDown = (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setSearchOpen(true);
+      setActiveSearchIndex((current) => clamp(current + 1, 0, Math.max(0, searchResults.length - 1)));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSearchOpen(true);
+      setActiveSearchIndex((current) => clamp(current - 1, 0, Math.max(0, searchResults.length - 1)));
+    } else if (event.key === 'Escape') {
+      setSearchText('');
+      setSearchOpen(false);
+      setActiveSearchIndex(0);
+    }
+  };
 
   useEffect(() => {
     selectedNodeIdRef.current = selectedNode?.id || null;
@@ -256,7 +652,7 @@ export default function DashboardGlobe({
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 100);
-    camera.position.set(0, 0.08, 6.2);
+    camera.position.set(0, 0.08, CAMERA_DISTANCE);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -271,6 +667,7 @@ export default function DashboardGlobe({
 
     const root = new THREE.Group();
     root.rotation.set(-0.12, -0.4, 0.02);
+    root.position.y = GLOBE_Y_OFFSET;
     scene.add(root);
 
     const statusColors = STATUS_COLORS;
@@ -337,6 +734,88 @@ export default function DashboardGlobe({
     root.add(cityPoints);
 
     const glowTexture = makeGlowTexture();
+    const folderTexture = makeFolderTexture();
+    const beamTexture = makeBeamTexture();
+
+    // Central energy core + volumetric light beam, echoing the holographic
+    // data-node look: a thin bright core wrapped in progressively wider,
+    // fainter halo shells that fade out toward both ends.
+    const coreGroup = new THREE.Group();
+    const beamLayers = [
+      { top: 0.028, bottom: 0.05, opacity: 0.85, color: 0xe4fbff },
+      { top: 0.075, bottom: 0.13, opacity: 0.3, color: 0x9ff2ff },
+      { top: 0.15, bottom: 0.24, opacity: 0.12, color: 0x38bdf8 },
+    ].map((layer) => {
+      const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(layer.top, layer.bottom, 4.36, 24, 1, true),
+        new THREE.MeshBasicMaterial({
+          map: beamTexture,
+          color: layer.color,
+          transparent: true,
+          opacity: layer.opacity,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      mesh.userData.baseOpacity = layer.opacity;
+      coreGroup.add(mesh);
+      return mesh;
+    });
+
+    const coreCube = new THREE.Mesh(
+      new THREE.BoxGeometry(0.24, 0.24, 0.24),
+      new THREE.MeshBasicMaterial({
+        color: 0xd8f8ff,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    const coreWire = new THREE.LineSegments(
+      new THREE.WireframeGeometry(new THREE.BoxGeometry(0.4, 0.4, 0.4)),
+      new THREE.LineBasicMaterial({
+        color: 0x67e8f9,
+        transparent: true,
+        opacity: 0.6,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    const coreGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: glowTexture,
+        color: 0x9ff2ff,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    coreGlow.scale.setScalar(1.35);
+    coreGroup.add(coreCube);
+    coreGroup.add(coreWire);
+    coreGroup.add(coreGlow);
+
+    const baseRings = [0.3, 0.46].map((ringRadius, index) => {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(ringRadius, ringRadius + 0.05, 48),
+        new THREE.MeshBasicMaterial({
+          color: index === 0 ? 0x9ff2ff : 0x38bdf8,
+          transparent: true,
+          opacity: 0.4,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = -2.18;
+      coreGroup.add(ring);
+      return ring;
+    });
+
+    root.add(coreGroup);
     const maxValue = Math.max(1, ...displayNodes.map(getNodeValue));
     const nodeMeshes = [];
     const selectedHaloSprites = [];
@@ -354,14 +833,25 @@ export default function DashboardGlobe({
       const normalized = Math.sqrt(value / maxValue);
       const radius = 0.07 + normalized * 0.12;
       const color = statusColors[node.status] || typeColors[node.type] || 0x38bdf8;
+      const isFolderNode = Boolean(node.path && (node.type === 'file' || node.type === 'project'));
 
       const group = new THREE.Group();
       group.position.copy(position);
       group.lookAt(0, 0, 0);
 
+      // Folder nodes render as the icon alone — the sphere becomes an
+      // invisible (but larger) raycast target so hover/click still works.
+      // colorWrite/depthWrite must both be off or the transparent sphere
+      // still writes depth and punches a black hole into the scene.
       const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(radius, 20, 20),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.96 }),
+        new THREE.SphereGeometry(isFolderNode ? radius * 1.7 : radius, 20, 20),
+        new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: isFolderNode ? 0 : 0.96,
+          colorWrite: !isFolderNode,
+          depthWrite: !isFolderNode,
+        }),
       );
       mesh.userData.dashboardNode = node;
       mesh.userData.baseRadius = radius;
@@ -375,13 +865,29 @@ export default function DashboardGlobe({
           map: glowTexture,
           color,
           transparent: true,
-          opacity: 0.75,
+          opacity: isFolderNode ? 0.4 : 0.75,
           blending: THREE.AdditiveBlending,
           depthWrite: false,
         }),
       );
       sprite.scale.setScalar(radius * 7.5);
       group.add(sprite);
+
+      if (isFolderNode) {
+        const folderSprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: folderTexture,
+            color,
+            transparent: true,
+            opacity: 0.98,
+            depthWrite: false,
+          }),
+        );
+        folderSprite.scale.setScalar(radius * 5.4);
+        // Child of the mesh so hover/selection scaling applies to the icon.
+        mesh.add(folderSprite);
+        mesh.userData.folderSprite = folderSprite;
+      }
 
       const halos = [0, 1, 2].map((haloIndex) => {
         const halo = new THREE.Sprite(
@@ -430,6 +936,7 @@ export default function DashboardGlobe({
     });
 
     const orbitGroup = new THREE.Group();
+    orbitGroup.position.y = GLOBE_Y_OFFSET;
     const orbits = [
       { radius: 2.72, yScale: 0.38, rot: [0.1, 0.4, 0.1], color: 0x22d3ee },
       { radius: 2.9, yScale: 0.26, rot: [0.82, -0.32, 0.45], color: 0x3b82f6 },
@@ -459,9 +966,10 @@ export default function DashboardGlobe({
     const baseEmissiveIntensity = globeMaterial.emissiveIntensity;
     const baseRimIntensity = rimLight.intensity;
     let hoveredMesh = null;
-    let cameraDistance = 6.2;
+    let cameraDistance = CAMERA_DISTANCE;
     let animationFrame = 0;
     let frameCount = 0;
+    let lastFocusedNodeId = null;
     const worldPosition = new THREE.Vector3();
 
     const focusOnMesh = (mesh) => {
@@ -620,6 +1128,20 @@ export default function DashboardGlobe({
       const cpu01 = THREE.MathUtils.clamp(Number(live.cpuPercent) / 100 || 0, 0, 1);
       const mem01 = THREE.MathUtils.clamp(Number(live.memoryPercent) / 100 || 0, 0, 1);
       const filter = statusFilterRef.current;
+      const selectedId = selectedNodeIdRef.current;
+
+      if (selectedId && selectedId !== lastFocusedNodeId) {
+        const selectedMesh = nodeMeshes.find(
+          (mesh) => mesh.userData.dashboardNode?.id === selectedId,
+        );
+        if (selectedMesh) {
+          focusOnMesh(selectedMesh);
+          selectedMesh.scale.setScalar(1.7);
+        }
+        lastFocusedNodeId = selectedId;
+      } else if (!selectedId) {
+        lastFocusedNodeId = null;
+      }
 
       if (focus.active && !drag.active) {
         root.rotation.y += (focus.targetY - root.rotation.y) * 0.07;
@@ -651,6 +1173,24 @@ export default function DashboardGlobe({
         baseEmissiveIntensity * (0.9 + cpu01 * 0.4 + Math.sin(seconds * (0.9 + cpu01 * 2.4)) * 0.1);
       rimLight.intensity = baseRimIntensity * (0.9 + mem01 * 0.35);
 
+      coreCube.rotation.y += 0.012;
+      coreCube.rotation.x += 0.006;
+      coreWire.rotation.y -= 0.009;
+      coreWire.rotation.z += 0.004;
+      const beamPulse = (Math.sin(seconds * 2.1) + 1) / 2;
+      beamLayers.forEach((layer, index) => {
+        layer.material.opacity =
+          layer.userData.baseOpacity * (0.82 + beamPulse * 0.28 + cpu01 * 0.2) *
+          (1 - index * 0.04);
+      });
+      coreGlow.material.opacity = 0.75 + beamPulse * 0.25;
+      coreGlow.scale.setScalar(1.25 + beamPulse * 0.22);
+      baseRings.forEach((ring, index) => {
+        const ringPulse = (Math.sin(seconds * 2 + index * 1.4) + 1) / 2;
+        ring.material.opacity = 0.24 + ringPulse * 0.3;
+        ring.scale.setScalar(1 + ringPulse * 0.08);
+      });
+
       orbitGroup.rotation.y -= 0.0015;
       orbitGroup.rotation.z += 0.0005;
       starGroup.rotation.y += 0.00035;
@@ -666,13 +1206,15 @@ export default function DashboardGlobe({
         mesh.userData.filteredOut = filteredOut;
         const material = mesh.material;
         const sprite = mesh.userData.glowSprite;
+        const folderSprite = mesh.userData.folderSprite;
         const halos = mesh.userData.selectionHalos || [];
 
         if (isSelected) {
           const beat = (Math.sin(seconds * 4.2) + 1) / 2;
           mesh.scale.setScalar(1.48 + beat * 0.28);
           material.color.setHex(selectedColor);
-          material.opacity = 1;
+          material.opacity = folderSprite ? 0 : 1;
+          if (folderSprite) folderSprite.material.color.setHex(selectedColor);
           if (sprite) {
             sprite.material.opacity = 1;
             sprite.scale.setScalar(mesh.userData.baseRadius * (10.5 + beat * 2));
@@ -697,23 +1239,27 @@ export default function DashboardGlobe({
         }
 
         material.color.setHex(mesh.userData.defaultColor);
+        if (folderSprite) folderSprite.material.color.setHex(mesh.userData.defaultColor);
         halos.forEach((halo) => {
           halo.visible = false;
           halo.material.opacity = 0;
         });
 
         if (filteredOut) {
-          material.opacity += (0.07 - material.opacity) * 0.16;
+          material.opacity += ((folderSprite ? 0 : 0.07) - material.opacity) * 0.16;
           if (sprite) sprite.material.opacity += (0.03 - sprite.material.opacity) * 0.16;
+          if (folderSprite)
+            folderSprite.material.opacity += (0.05 - folderSprite.material.opacity) * 0.16;
           mesh.scale.setScalar(Math.max(0.8, mesh.scale.x * 0.96));
           return;
         }
 
-        material.opacity = 0.96;
+        material.opacity = folderSprite ? 0 : 0.96;
         if (sprite) {
-          sprite.material.opacity = 0.75;
+          sprite.material.opacity = folderSprite ? 0.4 : 0.75;
           sprite.scale.setScalar(mesh.userData.baseRadius * 7.5);
         }
+        if (folderSprite) folderSprite.material.opacity = 0.98;
         if (mesh === hoveredMesh) return;
         const pulse = mesh.userData.alert ? 0.22 : 0.09;
         const pulseSpeed = node?.type === 'system' ? 2.4 + cpu01 * 3.4 : 2.4;
@@ -753,6 +1299,8 @@ export default function DashboardGlobe({
       });
       selectedHaloSprites.length = 0;
       glowTexture.dispose();
+      folderTexture.dispose();
+      beamTexture.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === stage) stage.removeChild(renderer.domElement);
     };
@@ -763,18 +1311,16 @@ export default function DashboardGlobe({
   const canUsePortal = typeof document !== 'undefined' && selected;
   const panelWidth = viewport.width < 760 ? Math.max(300, viewport.width - 32) : 380;
   const panelLeft = viewport.width < 760 ? 16 : viewport.width - panelWidth - 32;
-  const panelTop =
-    viewport.width < 760
-      ? clamp(
-          (selectedAnchor?.y || viewport.height * 0.5) + 42,
-          72,
-          Math.max(72, viewport.height - 360),
-        )
-      : clamp(
-          (selectedAnchor?.y || viewport.height * 0.45) - 160,
-          86,
-          Math.max(86, viewport.height - 390),
-        );
+  // Keep the whole panel on screen: clamp against its max rendered height so
+  // it never sinks below the viewport, and roughly center it on the node.
+  const panelMaxHeight = Math.min(640, viewport.height - 110);
+  const panelMinTop = viewport.width < 760 ? 72 : 86;
+  const panelMaxTop = Math.max(panelMinTop, viewport.height - panelMaxHeight - 24);
+  const panelTop = clamp(
+    (selectedAnchor?.y || viewport.height * 0.45) - panelMaxHeight * 0.42,
+    panelMinTop,
+    panelMaxTop,
+  );
   const connectorEnd = {
     x: panelLeft,
     y: panelTop + 142,
@@ -786,6 +1332,78 @@ export default function DashboardGlobe({
   return (
     <section className="dashboard-globe-card glass-card hologram-globe-card">
       <div className="globe-scanline" />
+      <div className="globe-node-search">
+        <form className="globe-node-search-box" onSubmit={handleSearchSubmit}>
+          <label className="sr-only" htmlFor="globe-node-search-input">
+            {searchCopy.label}
+          </label>
+          <span className="globe-node-search-mark" aria-hidden="true" />
+          <input
+            id="globe-node-search-input"
+            type="search"
+            value={searchText}
+            placeholder={searchCopy.placeholder}
+            autoComplete="off"
+            onChange={(event) => {
+              setSearchText(event.target.value);
+              setSearchOpen(true);
+              setActiveSearchIndex(0);
+            }}
+            onFocus={() => setSearchOpen(true)}
+            onKeyDown={handleSearchKeyDown}
+          />
+          {searchText ? (
+            <button
+              type="button"
+              className="globe-node-search-clear"
+              onClick={() => {
+                setSearchText('');
+                setSearchOpen(false);
+                setActiveSearchIndex(0);
+              }}
+              aria-label={searchCopy.clear}
+            >
+              x
+            </button>
+          ) : (
+            <span className="globe-node-search-hint">{searchCopy.hint}</span>
+          )}
+        </form>
+        {searchOpen && searchText.trim() ? (
+          <div className="globe-node-search-results" role="listbox">
+            {searchResults.length ? (
+              searchResults.map((node, index) => (
+                <button
+                  key={node.id}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeSearchIndex}
+                  className={index === activeSearchIndex ? 'active' : ''}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActiveSearchIndex(index)}
+                  onClick={() => selectSearchNode(node)}
+                >
+                  <span>
+                    <strong>{node.label}</strong>
+                    <em>
+                      {node.meta?.rootLabel
+                        ? `${node.meta.rootLabel} / ${node.path}`
+                        : node.path || node.type}
+                    </em>
+                  </span>
+                  <i className={`status-text-${node.status}`}>{statusLabel(t, node.status)}</i>
+                </button>
+              ))
+            ) : folderSearch.loading ? (
+              <div className="globe-node-search-empty">
+                {language === 'zh' ? '搜尋子資料夾...' : 'Searching subfolders...'}
+              </div>
+            ) : (
+              <div className="globe-node-search-empty">{searchCopy.noResults}</div>
+            )}
+          </div>
+        ) : null}
+      </div>
       <div ref={stageRef} className="globe-stage" aria-label="Interactive 3D data globe" />
 
       {loading ? (
@@ -891,6 +1509,22 @@ export default function DashboardGlobe({
                     </dd>
                   </div>
                 </dl>
+                {selected.path ? (
+                  <div className="globe-file-tree">
+                    <div className="globe-file-tree-head">
+                      <span>{t('dashboard.nodeContents')}</span>
+                      <button
+                        type="button"
+                        onClick={() => window.api?.openPath?.(selected.path)}
+                      >
+                        {t('dashboard.openFolder')}
+                      </button>
+                    </div>
+                    <div className="globe-file-tree-body">
+                      <DirListing dirPath={selected.path} depth={0} t={t} />
+                    </div>
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   className="globe-open-button"

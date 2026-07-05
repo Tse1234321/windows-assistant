@@ -7,9 +7,7 @@ import { LocaleProvider } from './i18n.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import OverlayApp from './overlay/OverlayApp.jsx';
 
-// Pages are lazy-loaded so heavy dependencies (Three.js excluded — the
-// dashboard is the landing page — but the workflow editor, EE tools, PDF
-// tools, …) don't inflate the startup bundle.
+// Pages are lazy-loaded so heavier tools don't inflate the startup bundle.
 const Projects = lazy(() => import('./pages/Projects.jsx'));
 const Modes = lazy(() => import('./pages/Modes.jsx'));
 const FileOrganizer = lazy(() => import('./pages/FileOrganizer.jsx'));
@@ -31,7 +29,6 @@ const CommandCheatsheet = lazy(() => import('./pages/CommandCheatsheet.jsx'));
 const ToolchainDoctor = lazy(() => import('./pages/ToolchainDoctor.jsx'));
 const EETools = lazy(() => import('./pages/EETools.jsx'));
 const EmbeddedLab = lazy(() => import('./pages/EmbeddedLab.jsx'));
-const PdfTools = lazy(() => import('./pages/PdfTools.jsx'));
 
 function PageFallback() {
   return (
@@ -179,8 +176,6 @@ function Shell() {
         return <EETools />;
       case 'embedded':
         return <EmbeddedLab />;
-      case 'pdf':
-        return <PdfTools />;
       case 'automations':
         return <Automations onNavigate={navigate} />;
       case 'workflows':

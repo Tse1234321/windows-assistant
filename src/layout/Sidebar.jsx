@@ -21,7 +21,6 @@ export const NAV_SECTIONS = [
     section: 'nav.tools',
     items: [
       { key: 'screenshots', label: 'nav.screenshots', icon: 'image' },
-      { key: 'pdf', label: 'nav.pdf', icon: 'pdf' },
       { key: 'workspaceTemplates', label: 'nav.workspaceTemplates', icon: 'template' },
       { key: 'modes', label: 'nav.modes', icon: 'play' },
       { key: 'rules', label: 'nav.rules', icon: 'rules' },
@@ -83,7 +82,6 @@ function Icon({ name }) {
     heart: (
       <path d="M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10zM8 11h2l1-2 2 4 1-2h2" />
     ),
-    pdf: <path d="M6 3h9l4 4v14H6zM15 3v4h4M9 11h6M9 15h6M9 19h3" />,
   };
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
