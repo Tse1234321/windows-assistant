@@ -105,16 +105,21 @@ export default function CleanCenter({ onNavigate = () => {} }) {
     setReport(null);
     setCleanProgress(null);
     setScanProgress({ phase: 'Preparing scan', scanned: 0, total: 1 });
-    const result = await window.api.cleanup.scan({});
-    setBusy(false);
-    setScanProgress(null);
-    if (!result.ok) {
-      toast(result.error || '掃描失敗', 'error');
-      return;
+    try {
+      const result = await window.api.cleanup.scan({});
+      if (!result.ok) {
+        toast(result.error || '掃描失敗', 'error');
+        return;
+      }
+      applyScanResult(result);
+      toast(`掃描完成：找到 ${result.summary.totalCount} 個項目`, 'ok');
+      load();
+    } catch (err) {
+      toast(err?.message || '掃描失敗', 'error');
+    } finally {
+      setBusy(false);
+      setScanProgress(null);
     }
-    applyScanResult(result);
-    toast(`掃描完成：找到 ${result.summary.totalCount} 個項目`, 'ok');
-    load();
   };
 
   const items = useMemo(() => scanResult?.items || [], [scanResult?.items]);
@@ -209,22 +214,27 @@ export default function CleanCenter({ onNavigate = () => {} }) {
     setBusy(true);
     setCleaningPhase('cleaning');
     setCleanProgress({ phase: 'Cleaning', done: 0, total: itemsToClean.length, freedSize: 0 });
-    const result = await window.api.cleanup.cleanSelected({ items: itemsToClean });
-    setReport(result);
-    setSelected(new Set());
-    toast(
-      `清理完成：成功 ${result.cleaned || 0}，跳過 ${result.skipped || 0}，失敗 ${result.failed || 0}，釋放 ${formatBytes(result.freedSize)}`,
-      result.failed ? 'warn' : 'ok',
-    );
-    setCleaningPhase('rescan');
-    await load();
-    const cleanedPaths = (result.results || [])
-      .filter((row) => row.status === 'cleaned')
-      .map((row) => row.path);
-    await rescanAfterClean(quick, cleanedPaths);
-    setCleaningPhase(null);
-    setCleanProgress(null);
-    setBusy(false);
+    try {
+      const result = await window.api.cleanup.cleanSelected({ items: itemsToClean });
+      setReport(result);
+      setSelected(new Set());
+      toast(
+        `清理完成：成功 ${result.cleaned || 0}，跳過 ${result.skipped || 0}，失敗 ${result.failed || 0}，釋放 ${formatBytes(result.freedSize)}`,
+        result.failed ? 'warn' : 'ok',
+      );
+      setCleaningPhase('rescan');
+      await load();
+      const cleanedPaths = (result.results || [])
+        .filter((row) => row.status === 'cleaned')
+        .map((row) => row.path);
+      await rescanAfterClean(quick, cleanedPaths);
+    } catch (err) {
+      toast(err?.message || '清理失敗', 'error');
+    } finally {
+      setCleaningPhase(null);
+      setCleanProgress(null);
+      setBusy(false);
+    }
   };
 
   const scanFileNow = async (row) => {
@@ -299,12 +309,17 @@ export default function CleanCenter({ onNavigate = () => {} }) {
 
   const emptyRecycleBin = async () => {
     setBusy(true);
-    const result = await window.api.cleanup.emptyRecycleBin();
-    setBusy(false);
-    toast(
-      result?.ok ? `已清空資源回收筒，釋放 ${formatBytes(result.clearedSize)}` : result?.error || '清空失敗',
-      result?.ok ? 'ok' : 'error',
-    );
+    try {
+      const result = await window.api.cleanup.emptyRecycleBin();
+      toast(
+        result?.ok ? `已清空資源回收筒，釋放 ${formatBytes(result.clearedSize)}` : result?.error || '清空失敗',
+        result?.ok ? 'ok' : 'error',
+      );
+    } catch (err) {
+      toast(err?.message || '清空失敗', 'error');
+    } finally {
+      setBusy(false);
+    }
     await refreshRecycleBin();
     load();
   };

@@ -316,20 +316,27 @@ export default function SecurityCenter() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setLoadError('');
-    const [securityResult, threatResult, settingsResult] = await Promise.all([
-      window.api?.security?.getStatus?.(),
-      window.api?.antivirus?.listThreats?.(),
-      window.api?.antivirus?.getSettings?.(),
-    ]);
-    if (securityResult?.ok) setStatus(securityResult.status);
-    else {
-      const message = securityResult?.error || '安全狀態讀取失敗。';
+    try {
+      const [securityResult, threatResult, settingsResult] = await Promise.all([
+        window.api?.security?.getStatus?.(),
+        window.api?.antivirus?.listThreats?.(),
+        window.api?.antivirus?.getSettings?.(),
+      ]);
+      if (securityResult?.ok) setStatus(securityResult.status);
+      else {
+        const message = securityResult?.error || '安全狀態讀取失敗。';
+        setLoadError(message);
+        toast(message, 'error');
+      }
+      if (threatResult?.ok) setThreats(threatResult);
+      if (settingsResult?.ok) setSettings(settingsResult.settings);
+    } catch (err) {
+      const message = (err as Error)?.message || '安全狀態讀取失敗。';
       setLoadError(message);
       toast(message, 'error');
+    } finally {
+      setLoading(false);
     }
-    if (threatResult?.ok) setThreats(threatResult);
-    if (settingsResult?.ok) setSettings(settingsResult.settings);
-    setLoading(false);
   }, [toast]);
 
   useEffect(() => {

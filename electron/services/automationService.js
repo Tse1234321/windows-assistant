@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { shell } = require('electron');
+const { shell, app: electronApp } = require('electron');
 const notificationService = require('./notificationService');
 const fileOrganizerService = require('./fileOrganizerService');
 const screenshotService = require('./screenshotService');
@@ -12,7 +12,82 @@ const { classifyFile } = require('./fileClassifier');
 
 const scheduledState = new Map();
 let scheduleTimer = null;
+let scheduleKickoffTimer = null;
 const DOWNLOAD_FILE_MOVE_ACTIONS = new Set(['move', 'organizeFileByType']);
+
+// ---- Schedule-state persistence -------------------------------------------
+// `scheduledState` (key -> last-fired epoch ms) used to live only in memory, so
+// every app restart forgot when schedules last ran: interval rules fired
+// immediately on the first tick and a daily rule re-fired if the app restarted
+// inside its time window. The state is now mirrored to a small JSON file in
+// userData. When Electron's `app` is unavailable (unit tests use a stub with
+// `app: null`), persistence is silently disabled and behaviour is unchanged.
+let scheduleStateLoaded = false;
+
+function scheduleStatePath() {
+  try {
+    if (!electronApp || typeof electronApp.getPath !== 'function') return null;
+    return path.join(electronApp.getPath('userData'), 'schedule-state.json');
+  } catch (_) {
+    return null;
+  }
+}
+
+function ensureScheduleStateLoaded() {
+  if (scheduleStateLoaded) return;
+  scheduleStateLoaded = true;
+  const file = scheduleStatePath();
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const cutoff = Date.now() - 45 * 24 * 60 * 60 * 1000; // drop long-dead entries
+      for (const [key, value] of Object.entries(parsed)) {
+        const ts = Number(value);
+        if (Number.isFinite(ts) && ts > cutoff && !scheduledState.has(key)) {
+          scheduledState.set(key, ts);
+        }
+      }
+    }
+  } catch (_) {
+    // First run or unreadable state file — start clean; never block scheduling.
+  }
+}
+
+function persistScheduleState() {
+  const file = scheduleStatePath();
+  if (!file) return;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(scheduledState)), 'utf-8');
+    fs.renameSync(tmp, file);
+  } catch (_) {
+    // Persistence is best-effort; scheduling still works from memory.
+  }
+}
+
+function clearScheduleState() {
+  ensureScheduleStateLoaded();
+  scheduledState.clear();
+  persistScheduleState();
+  return { ok: true };
+}
+
+/** Read-only snapshot for the diagnostics panel. */
+function getScheduleDiagnostics() {
+  ensureScheduleStateLoaded();
+  let lastFiredAt = 0;
+  for (const value of scheduledState.values()) {
+    if (Number.isFinite(value) && value > lastFiredAt) lastFiredAt = value;
+  }
+  return {
+    running: !!scheduleTimer,
+    trackedSchedules: scheduledState.size,
+    lastFiredAt: lastFiredAt || null,
+    statePath: scheduleStatePath(),
+  };
+}
 
 function list(config) {
   return config && Array.isArray(config.automations) ? config.automations : [];
@@ -498,6 +573,7 @@ function parseTimeMinutes(value) {
 }
 
 function scheduleDue(rule, now = new Date()) {
+  ensureScheduleStateLoaded();
   const condition = rule.condition || {};
   if (condition.type !== 'schedule') return false;
   const key = rule.id || rule.name;
@@ -540,7 +616,7 @@ async function handleSchedules(config) {
   for (const rule of rules) {
     if (!scheduleDue(rule)) continue;
     const key = rule.id || rule.name;
-    scheduledState.set(key, Date.now());
+    markScheduleFired(key);
     const result = await runAction(
       rule.action || {},
       {
@@ -567,13 +643,19 @@ function startScheduler(getConfig, onFired) {
     if (fired.length && typeof onFired === 'function') onFired(fired);
   };
   scheduleTimer = setInterval(() => tick().catch(() => {}), 60 * 1000);
-  setTimeout(() => tick().catch(() => {}), 3000);
+  scheduleKickoffTimer = setTimeout(() => tick().catch(() => {}), 3000);
   return { ok: true };
 }
 
 function stopScheduler() {
   if (scheduleTimer) clearInterval(scheduleTimer);
   scheduleTimer = null;
+  if (scheduleKickoffTimer) clearTimeout(scheduleKickoffTimer);
+  scheduleKickoffTimer = null;
+}
+
+function isSchedulerRunning() {
+  return !!scheduleTimer;
 }
 
 /**
@@ -587,7 +669,9 @@ function scheduleDueFor(key, condition, now = new Date()) {
 
 /** Record that the schedule for `key` just fired (resets its dedupe window). */
 function markScheduleFired(key) {
+  ensureScheduleStateLoaded();
   scheduledState.set(key, Date.now());
+  persistScheduleState();
 }
 
 module.exports = {
@@ -599,6 +683,9 @@ module.exports = {
   handleSchedules,
   startScheduler,
   stopScheduler,
+  isSchedulerRunning,
   scheduleDueFor,
   markScheduleFired,
+  clearScheduleState,
+  getScheduleDiagnostics,
 };

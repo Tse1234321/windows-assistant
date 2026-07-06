@@ -349,7 +349,12 @@ function saveSettings(newSettings) {
   try {
     const serialised = JSON.stringify(newSettings, null, 2);
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, serialised, 'utf-8');
+    // Write-to-temp + rename so a crash or power loss mid-write can never leave
+    // a half-written (= corrupt) settings file behind. On the same volume the
+    // rename replaces the old file atomically.
+    const tmp = `${target}.tmp`;
+    fs.writeFileSync(tmp, serialised, 'utf-8');
+    fs.renameSync(tmp, target);
     return { ok: true, path: target };
   } catch (err) {
     return { ok: false, path: target, error: `Could not save settings: ${err.message}` };

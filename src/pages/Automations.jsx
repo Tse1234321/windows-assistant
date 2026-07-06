@@ -87,14 +87,19 @@ export default function Automations({ onNavigate }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [automationResult, settingsResult] = await Promise.all([
-      window.api.listAutomations(),
-      window.api.getSettings(),
-    ]);
-    setRules(automationResult.automations || []);
-    if (settingsResult.ok) setSettings(settingsResult.settings);
-    setLoading(false);
-  }, []);
+    try {
+      const [automationResult, settingsResult] = await Promise.all([
+        window.api.listAutomations(),
+        window.api.getSettings(),
+      ]);
+      setRules(automationResult.automations || []);
+      if (settingsResult.ok) setSettings(settingsResult.settings);
+    } catch (err) {
+      toast(err?.message || '自動化規則載入失敗', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
     load();

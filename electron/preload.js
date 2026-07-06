@@ -230,6 +230,10 @@ contextBridge.exposeInMainWorld('api', {
   resetSettings: () => ipcRenderer.invoke('settings:reset'),
   openLogs: () => ipcRenderer.invoke('logs:open'),
 
+  // Diagnostics / repair panel
+  getDiagnostics: () => ipcRenderer.invoke('diagnostics:get'),
+  runRepair: (action) => ipcRenderer.invoke('diagnostics:repair', action),
+
   // VS Code path
   detectVSCode: () => ipcRenderer.invoke('vscode:detect'),
   pickVSCodeFile: () => ipcRenderer.invoke('dialog:pickVSCode'),

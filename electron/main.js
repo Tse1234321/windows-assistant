@@ -136,7 +136,7 @@ function monitorFolders(config) {
     });
   }
   // Watch folders referenced by enabled workflow triggers, too.
-  workflowService.listWorkflows(config).forEach((wf) => {
+  workflowService.savedWorkflows(config).forEach((wf) => {
     if (!wf || wf.enabled === false) return;
     (wf.nodes || []).forEach((node) => {
       if (node && node.kind === 'trigger' && node.config && node.config.folder) {
@@ -183,6 +183,24 @@ function scheduleAutoOrganize(info, config) {
   }, delayMs);
 }
 
+// A legacy automation that was migrated into the visual editor keeps its id as
+// the workflow id. When both copies exist (flat rule + saved workflow), only the
+// workflow may execute in background paths — otherwise the same rule runs twice
+// per event. This returns a config whose `automations` exclude such duplicates.
+function configForAutomationRun(config) {
+  const workflowIds = new Set(
+    workflowService
+      .savedWorkflows(config)
+      .map((wf) => wf.id)
+      .filter(Boolean),
+  );
+  if (!workflowIds.size || !Array.isArray(config.automations)) return config;
+  return {
+    ...config,
+    automations: config.automations.filter((rule) => !(rule && workflowIds.has(rule.id))),
+  };
+}
+
 async function onNewFile(info) {
   try {
     const config = loadConfig();
@@ -192,15 +210,18 @@ async function onNewFile(info) {
       notificationService.notify('偵測到新檔案', `${info.file}（${path.basename(info.folder)}）`);
     }
     if (g.automationsEnabled !== false) {
-      const fired = await automationService.handleNewFile(config, info);
+      const fired = await automationService.handleNewFile(configForAutomationRun(config), info);
       if (fired.length)
         writeLog('info', `automation fired for ${info.file}: ${JSON.stringify(fired)}`);
-      // Run enabled visual workflows whose triggers match this file event.
+      // Run enabled, user-saved visual workflows whose triggers match this file
+      // event (the migrated editor-only view is excluded — those rules already
+      // ran through automationService above).
       const event = { kind: 'file', info };
-      for (const wf of workflowService.listWorkflows(config)) {
+      for (const wf of workflowService.savedWorkflows(config)) {
         if (!wf || wf.enabled === false) continue;
         const result = await workflowService.runWorkflow(wf, event, config);
         if (result.ok && (result.steps || []).length) {
+          markWorkflowRun();
           writeLog('info', `workflow "${wf.name}" fired for ${info.file}`);
         }
       }
@@ -226,10 +247,16 @@ function startMonitoring() {
 
 let workflowScheduleTimer = null;
 let cleanupScheduleTimer = null;
-// Find an enabled workflow's schedule trigger that is currently due (reusing the
+// Diagnostics: when a workflow last executed at least one step (any trigger kind).
+let lastWorkflowRunAt = 0;
+function markWorkflowRun() {
+  lastWorkflowRunAt = Date.now();
+}
+
+// Find every enabled schedule trigger node that is currently due (reusing the
 // flat-automation timing + dedupe), so scheduled workflows don't fire every tick.
-function dueScheduleTrigger(workflow) {
-  return (workflow.nodes || []).find((node) => {
+function dueScheduleTriggers(workflow) {
+  return (workflow.nodes || []).filter((node) => {
     if (!node || node.kind !== 'trigger' || node.type !== 'schedule') return false;
     return automationService.scheduleDueFor(`${workflow.id}:${node.id}`, node.config || {});
   });
@@ -238,18 +265,31 @@ function dueScheduleTrigger(workflow) {
 async function runScheduledWorkflows() {
   const config = loadConfig();
   if (config.general && config.general.automationsEnabled === false) return;
-  const event = { kind: 'schedule', info: { file: '', path: '', folder: '', ext: '', size: 0 } };
-  for (const wf of workflowService.listWorkflows(config)) {
+  for (const wf of workflowService.savedWorkflows(config)) {
     if (!wf || wf.enabled === false) continue;
-    const dueNode = dueScheduleTrigger(wf);
-    if (!dueNode) continue;
-    automationService.markScheduleFired(`${wf.id}:${dueNode.id}`);
-    const result = await workflowService.runWorkflow(wf, event, config);
-    if (result.ok && (result.steps || []).length) {
-      writeLog('info', `scheduled workflow "${wf.name}" fired`);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('app:automation-fired', result.steps);
+    const dueNodes = dueScheduleTriggers(wf);
+    if (!dueNodes.length) continue;
+    for (const node of dueNodes) {
+      automationService.markScheduleFired(`${wf.id}:${node.id}`);
+    }
+    const event = {
+      kind: 'schedule',
+      // Only these trigger nodes fire this tick — other schedule triggers in the
+      // same workflow keep their own timing.
+      dueNodeIds: dueNodes.map((node) => node.id),
+      info: { file: '', path: '', folder: '', ext: '', size: 0 },
+    };
+    try {
+      const result = await workflowService.runWorkflow(wf, event, config);
+      if (result.ok && (result.steps || []).length) {
+        markWorkflowRun();
+        writeLog('info', `scheduled workflow "${wf.name}" fired`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('app:automation-fired', result.steps);
+        }
       }
+    } catch (err) {
+      writeLog('error', `scheduled workflow "${wf.name}" failed: ${err.message}`);
     }
   }
 }
@@ -301,7 +341,9 @@ async function runScheduledCleanup() {
 function startBackgroundServices() {
   const getConfig = () => loadConfig();
   healthGuardService.start(getConfig, { runNow: true });
-  automationService.startScheduler(getConfig, (fired) => {
+  // The flat-automation scheduler must not see rules that also exist as saved
+  // workflows (they run through the workflow scheduler instead).
+  automationService.startScheduler(() => configForAutomationRun(loadConfig()), (fired) => {
     writeLog('info', `scheduled automations fired: ${JSON.stringify(fired)}`);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:automation-fired', fired);
@@ -386,6 +428,27 @@ function createWindow(showOnReady = true) {
   mainWindow.once('ready-to-show', () => {
     // When launched at login (--hidden) we stay in the tray and don't pop the window.
     if (showOnReady) mainWindow.show();
+  });
+
+  // A crashed or killed renderer would otherwise leave a frozen/white window.
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    writeLog('error', `renderer gone (${details.reason}); reloading window`);
+    if (mainWindow && !mainWindow.isDestroyed() && details.reason !== 'clean-exit') {
+      mainWindow.webContents.reload();
+    }
+  });
+
+  // Transient load failures (e.g. dev server not ready, file lock) → retry once
+  // instead of showing a blank page forever. -3 (ERR_ABORTED) is a normal
+  // in-page navigation abort and must be ignored.
+  mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
+    if (code === -3) return;
+    writeLog('error', `main window failed to load (${code} ${description}); retrying in 1.5s`);
+    setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (isDev) mainWindow.loadURL('http://localhost:5173');
+      else mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    }, 1500);
   });
 
   // Close button minimises to the system tray instead of quitting (configurable).
@@ -1575,6 +1638,7 @@ function registerIpc() {
     const workflow = workflowService.listWorkflows(config).find((wf) => wf && wf.id === id);
     if (!workflow) return { ok: false, error: '找不到工作流' };
     const result = await workflowService.runWorkflow(workflow, { kind: 'manual' }, config);
+    if (result.ok && (result.steps || []).length) markWorkflowRun();
     writeLog('info', `workflow manual run: ${JSON.stringify(result)}`);
     if (result.ok && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:automation-fired', result.steps || []);
@@ -1703,6 +1767,99 @@ function registerIpc() {
       await shell.openPath(dir);
       return { ok: true, path: dir };
     } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // --- Diagnostics / repair panel -------------------------------------------
+  // Everything here is local and read-only except the explicitly-named repair
+  // actions, which only touch app-owned state (never user files).
+  ipcMain.handle('diagnostics:get', async () => {
+    try {
+      const res = settingsService.getSettings();
+      const config = res.settings || {};
+      const workflows = workflowService.savedWorkflows(config);
+      const automations = automationService.list(config);
+      const schedule = automationService.getScheduleDiagnostics();
+
+      // Verify the settings file is actually writable (catches locked/read-only
+      // AppData, broken permissions, full disk) without touching its content.
+      let storageOk = res.ok === true;
+      let storageError = res.error || '';
+      if (storageOk) {
+        try {
+          fs.accessSync(res.path, fs.constants.R_OK | fs.constants.W_OK);
+        } catch (err) {
+          storageOk = false;
+          storageError = err.message;
+        }
+      }
+
+      return {
+        ok: true,
+        appVersion: app.getVersion(),
+        settingsPath: res.path,
+        storage: { ok: storageOk, error: storageError },
+        workflows: {
+          total: workflows.length,
+          enabled: workflows.filter((wf) => wf && wf.enabled !== false).length,
+        },
+        automations: {
+          total: automations.length,
+          enabled: automations.filter((rule) => rule && rule.enabled !== false).length,
+        },
+        lastWorkflowRunAt: lastWorkflowRunAt || schedule.lastFiredAt || null,
+        scheduler: {
+          automationTimer: automationService.isSchedulerRunning(),
+          workflowTimer: !!workflowScheduleTimer,
+          cleanupTimer: !!cleanupScheduleTimer,
+          trackedSchedules: schedule.trackedSchedules,
+        },
+        watcher: {
+          enabled: !(config.general && config.general.watchEnabled === false),
+          paused: fileWatcherService.isPaused(),
+          watched: fileWatcherService.watchedCount(),
+        },
+      };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('diagnostics:repair', async (_event, action) => {
+    try {
+      switch (action) {
+        case 'reloadSchedules':
+          startMonitoring();
+          startBackgroundServices();
+          refreshTrayMenu();
+          writeLog('info', 'diagnostics repair: schedules + monitoring reloaded');
+          return { ok: true, message: 'Schedules and monitoring reloaded.' };
+        case 'clearScheduleState': {
+          const cleared = automationService.clearScheduleState();
+          startBackgroundServices();
+          writeLog('info', 'diagnostics repair: schedule dedupe state cleared');
+          return { ok: cleared.ok, message: 'Schedule state cleared and scheduler restarted.' };
+        }
+        case 'reinitSettings': {
+          const saved = settingsService.saveSettings(
+            settingsService.mergeSettings(settingsService.getSettings().settings || {}),
+          );
+          if (saved.ok) {
+            configureAutoLaunch();
+            startMonitoring();
+            startBackgroundServices();
+            applyOverlayFromSettings();
+            refreshTrayMenu();
+          }
+          writeLog('info', 'diagnostics repair: settings re-normalized');
+          return { ok: saved.ok, error: saved.error, message: 'Settings re-normalized.' };
+        }
+        default:
+          return { ok: false, error: `Unknown repair action: ${action}` };
+      }
+    } catch (err) {
+      writeLog('error', `diagnostics repair "${action}" failed: ${err.message}`);
       return { ok: false, error: err.message };
     }
   });

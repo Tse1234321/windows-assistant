@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import AppShell from './layout/AppShell.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { ThemeProvider } from './theme/ThemeProvider.jsx';
 import { ToastProvider } from './components/Toast.jsx';
 import { LocaleProvider } from './i18n.jsx';
@@ -214,7 +215,9 @@ function Shell() {
         canForward={historyState.canForward}
       >
         <div className="page-transition" key={page}>
-          <Suspense fallback={<PageFallback />}>{renderPage()}</Suspense>
+          <ErrorBoundary resetKey={page}>
+            <Suspense fallback={<PageFallback />}>{renderPage()}</Suspense>
+          </ErrorBoundary>
         </div>
       </AppShell>
       <CommandPalette

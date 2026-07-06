@@ -153,23 +153,28 @@ export default function SystemMonitor({ onNavigate }) {
     }
 
     setLoading(true);
-    const [res, guardResult, startupResult] = await Promise.all([
-      window.api.getSystemStatus(),
-      window.api.getHealthGuard ? window.api.getHealthGuard() : Promise.resolve(null),
-      window.api.cleanup?.getStartupItems
-        ? window.api.cleanup.getStartupItems()
-        : Promise.resolve(null),
-    ]);
+    try {
+      const [res, guardResult, startupResult] = await Promise.all([
+        window.api.getSystemStatus(),
+        window.api.getHealthGuard ? window.api.getHealthGuard() : Promise.resolve(null),
+        window.api.cleanup?.getStartupItems
+          ? window.api.cleanup.getStartupItems()
+          : Promise.resolve(null),
+      ]);
 
-    if (res.ok) {
-      setStatus(res);
-      setError('');
-    } else {
-      setError(res.error || '讀取系統監控資料失敗。');
+      if (res.ok) {
+        setStatus(res);
+        setError('');
+      } else {
+        setError(res.error || '讀取系統監控資料失敗。');
+      }
+      if (guardResult?.ok) setGuard(guardResult);
+      if (startupResult) setStartup(startupResult);
+    } catch (err) {
+      setError(err?.message || '讀取系統監控資料失敗。');
+    } finally {
+      setLoading(false);
     }
-    if (guardResult?.ok) setGuard(guardResult);
-    if (startupResult) setStartup(startupResult);
-    setLoading(false);
   }, []);
 
   usePollingEffect(refresh, 4000, [refresh]);

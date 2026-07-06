@@ -95,16 +95,21 @@ export default function Projects({ onNavigate }) {
     if (!window.api) return;
     setLoading(true);
     setError('');
-    const [projectResult, hubResult, statusResult] = await Promise.all([
-      window.api.listProjects(),
-      window.api.getProjectHubSettings(),
-      window.api.getProjectScanStatus(),
-    ]);
-    if (projectResult.ok) setProjects(projectResult.projects || []);
-    else setError(projectResult.error || '讀取 Project Hub 失敗');
-    if (hubResult.ok) setHub(hubResult.projectHub);
-    if (statusResult.ok) setScanStatus(statusResult.status);
-    setLoading(false);
+    try {
+      const [projectResult, hubResult, statusResult] = await Promise.all([
+        window.api.listProjects(),
+        window.api.getProjectHubSettings(),
+        window.api.getProjectScanStatus(),
+      ]);
+      if (projectResult.ok) setProjects(projectResult.projects || []);
+      else setError(projectResult.error || '讀取 Project Hub 失敗');
+      if (hubResult.ok) setHub(hubResult.projectHub);
+      if (statusResult.ok) setScanStatus(statusResult.status);
+    } catch (err) {
+      setError(err?.message || '讀取 Project Hub 失敗');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {

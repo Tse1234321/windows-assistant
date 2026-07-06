@@ -25,9 +25,14 @@ export default function ActivityHistory() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const result = await window.api.listActivityHistory();
-    if (result.ok) setRows(result.rows || []);
-  }, []);
+    try {
+      const result = await window.api.listActivityHistory();
+      if (result.ok) setRows(result.rows || []);
+      else toast(result.error || '活動紀錄載入失敗', 'error');
+    } catch (err) {
+      toast(err?.message || '活動紀錄載入失敗', 'error');
+    }
+  }, [toast]);
 
   useEffect(() => {
     load();
@@ -35,12 +40,17 @@ export default function ActivityHistory() {
 
   const restoreDownloads = async () => {
     setBusy(true);
-    const result = await window.api.restoreDownloadsLastFromHistory();
-    setBusy(false);
-    toast(
-      result.ok ? `已復原 ${result.restored || 0} 個項目` : result.error || '復原失敗',
-      result.ok ? 'ok' : 'error',
-    );
+    try {
+      const result = await window.api.restoreDownloadsLastFromHistory();
+      toast(
+        result.ok ? `已復原 ${result.restored || 0} 個項目` : result.error || '復原失敗',
+        result.ok ? 'ok' : 'error',
+      );
+    } catch (err) {
+      toast(err?.message || '復原失敗', 'error');
+    } finally {
+      setBusy(false);
+    }
     load();
   };
 

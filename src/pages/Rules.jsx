@@ -19,13 +19,18 @@ export default function Rules() {
     }
 
     setLoading(true);
-    const res = await window.api.getRules();
-    setRules(res.rules || []);
-    setTypes(res.types || {});
+    try {
+      const res = await window.api.getRules();
+      setRules(res.rules || []);
+      setTypes(res.types || {});
 
-    const status = await window.api.getSystemStatus();
-    if (status.ok && status.rules) setLiveAlerts(status.rules.alerts || []);
-    setLoading(false);
+      const status = await window.api.getSystemStatus();
+      if (status.ok && status.rules) setLiveAlerts(status.rules.alerts || []);
+    } catch (err) {
+      setToast({ type: 'error', msg: err?.message || '規則載入失敗' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

@@ -81,7 +81,15 @@ function triggerFires(node, event) {
   if (!node || node.kind !== 'trigger') return false;
   const kind = event && event.kind;
   if (kind === 'manual') return true;
-  if (node.type === 'schedule') return kind === 'schedule';
+  if (node.type === 'schedule') {
+    if (kind !== 'schedule') return false;
+    // When the scheduler tells us exactly which schedule nodes are due
+    // (event.dueNodeIds), only those fire. Without the filter, a workflow with
+    // two schedule triggers (e.g. "every 5 min" + "daily 09:00") would run the
+    // daily branch every time the 5-minute branch was due.
+    const due = event && event.dueNodeIds;
+    return !Array.isArray(due) || due.includes(node.id);
+  }
   if (kind !== 'file') return false;
 
   const info = (event && event.info) || {};
@@ -190,8 +198,12 @@ function genId(prefix) {
 function automationToWorkflow(rule) {
   const condition = rule.condition || { type: 'newFileInFolder' };
   const action = rule.action || { type: 'notify' };
-  const triggerId = genId('trigger');
-  const actionId = genId('action');
+  // Node ids must be deterministic for a given rule: `listWorkflows` migrates on
+  // every call, and schedule dedupe keys are `${workflow.id}:${node.id}` — random
+  // ids would give every call a fresh dedupe key (= fire every scheduler tick).
+  const triggerId = rule.id ? `${rule.id}__trigger` : genId('trigger');
+  const actionId = rule.id ? `${rule.id}__action` : genId('action');
+  const edgeId = rule.id ? `${rule.id}__edge` : genId('edge');
   const { type: condType, ...condConfig } = condition;
   const { type: actionType, ...actionConfig } = action;
   return {
@@ -214,7 +226,7 @@ function automationToWorkflow(rule) {
         position: { x: 80, y: 240 },
       },
     ],
-    edges: [{ id: genId('edge'), source: triggerId, target: actionId }],
+    edges: [{ id: edgeId, source: triggerId, target: actionId }],
   };
 }
 
@@ -237,6 +249,17 @@ function listWorkflows(config) {
   return Array.isArray(config && config.workflows) ? config.workflows : [];
 }
 
+/**
+ * Only the workflows the user actually saved. Background execution (file
+ * watcher, minute scheduler) must use this instead of `listWorkflows`: the
+ * migrated view of legacy automations is for the editor only — those rules
+ * already run through automationService, so executing the migrated copies too
+ * would run every legacy rule twice per event.
+ */
+function savedWorkflows(config) {
+  return Array.isArray(config && config.workflows) ? config.workflows.filter(Boolean) : [];
+}
+
 module.exports = {
   DESTRUCTIVE_ACTIONS,
   isDestructiveAction,
@@ -247,4 +270,5 @@ module.exports = {
   automationToWorkflow,
   migrateAutomationsToWorkflows,
   listWorkflows,
+  savedWorkflows,
 };

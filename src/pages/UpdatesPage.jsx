@@ -86,13 +86,18 @@ export default function UpdatesPage() {
 
   const check = async () => {
     setBusy(true);
-    const result = await window.api.checkForUpdates?.();
-    setBusy(false);
-    if (result?.status) setStatus(result.status);
-    toast(
-      result?.ok === false ? result.error || text.checkFailed : text.checkDone,
-      result?.ok === false ? 'error' : 'ok',
-    );
+    try {
+      const result = await window.api.checkForUpdates?.();
+      if (result?.status) setStatus(result.status);
+      toast(
+        result?.ok === false ? result.error || text.checkFailed : text.checkDone,
+        result?.ok === false ? 'error' : 'ok',
+      );
+    } catch (err) {
+      toast(err?.message || text.checkFailed, 'error');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const install = async () => {

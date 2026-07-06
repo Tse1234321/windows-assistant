@@ -31,6 +31,7 @@ const CATEGORIES = [
   { key: 'projects', label: 'Projects', icon: 'PH' },
   { key: 'cleanup', label: '清理', icon: 'CC' },
   { key: 'automation', label: '自動化', icon: 'AU' },
+  { key: 'diagnostics', label: '診斷/修復', icon: 'DX' },
   { key: 'backup', label: '備份/還原', icon: 'BK' },
 ];
 
@@ -70,6 +71,10 @@ export default function Settings() {
   });
   const [brightnessDraft, setBrightnessDraft] = useState(50);
   const [brightnessSaving, setBrightnessSaving] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [diagnosticsError, setDiagnosticsError] = useState('');
+  const [repairBusy, setRepairBusy] = useState('');
 
   const general = settings?.general || {};
   const guard = settings?.healthGuard || {};
@@ -282,6 +287,42 @@ export default function Settings() {
       load();
     } else if (!result.canceled) {
       toast(result.error || '匯入失敗', 'error');
+    }
+  };
+
+  const loadDiagnostics = useCallback(async () => {
+    if (!api?.getDiagnostics) return;
+    setDiagnosticsLoading(true);
+    setDiagnosticsError('');
+    try {
+      const result = await api.getDiagnostics();
+      if (result?.ok) setDiagnostics(result);
+      else setDiagnosticsError(result?.error || '診斷資料讀取失敗');
+    } catch (err) {
+      setDiagnosticsError(err?.message || '診斷資料讀取失敗');
+    } finally {
+      setDiagnosticsLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    if (category === 'diagnostics') loadDiagnostics();
+  }, [category, loadDiagnostics]);
+
+  const runRepair = async (action, label) => {
+    if (!window.api?.runRepair) return;
+    setRepairBusy(action);
+    try {
+      const result = await window.api.runRepair(action);
+      toast(
+        result?.ok ? `${label}完成` : result?.error || `${label}失敗`,
+        result?.ok ? 'ok' : 'error',
+      );
+    } catch (err) {
+      toast(err?.message || `${label}失敗`, 'error');
+    } finally {
+      setRepairBusy('');
+      loadDiagnostics();
     }
   };
 
@@ -998,6 +1039,135 @@ export default function Settings() {
                   ))}
                 </div>
               </Row>
+            </Card>
+          ) : null}
+
+          {category === 'diagnostics' ? (
+            <Card
+              title="診斷 / 修復"
+              actions={
+                <Button size="sm" variant="ghost" onClick={loadDiagnostics} busy={diagnosticsLoading}>
+                  重新整理
+                </Button>
+              }
+            >
+              {diagnosticsError ? (
+                <InlineAlert tone="danger" title="診斷失敗">
+                  {diagnosticsError}
+                </InlineAlert>
+              ) : null}
+              {!diagnostics && diagnosticsLoading ? (
+                <div className="loading-block">
+                  <span className="spinner" />
+                  正在收集診斷資料...
+                </div>
+              ) : null}
+              {diagnostics ? (
+                <>
+                  <Row label="App 版本">
+                    <StatusBadge tone="ok">v{diagnostics.appVersion}</StatusBadge>
+                  </Row>
+                  <Row label="工作流" desc="視覺化工作流總數 / 啟用中數量。">
+                    <span>
+                      {diagnostics.workflows?.total ?? 0} 個，啟用{' '}
+                      {diagnostics.workflows?.enabled ?? 0} 個
+                    </span>
+                  </Row>
+                  <Row label="自動化規則" desc="傳統自動化規則總數 / 啟用中數量。">
+                    <span>
+                      {diagnostics.automations?.total ?? 0} 個，啟用{' '}
+                      {diagnostics.automations?.enabled ?? 0} 個
+                    </span>
+                  </Row>
+                  <Row label="最近一次工作流執行">
+                    <span>
+                      {diagnostics.lastWorkflowRunAt
+                        ? new Date(diagnostics.lastWorkflowRunAt).toLocaleString()
+                        : '尚未執行過'}
+                    </span>
+                  </Row>
+                  <Row label="本機資料存取" desc={diagnostics.settingsPath || ''}>
+                    <StatusBadge tone={diagnostics.storage?.ok ? 'ok' : 'danger'}>
+                      {diagnostics.storage?.ok
+                        ? '正常'
+                        : `異常：${diagnostics.storage?.error || '無法讀寫設定檔'}`}
+                    </StatusBadge>
+                  </Row>
+                  <Row label="排程服務" desc="自動化排程 / 工作流排程 / 清理排程計時器。">
+                    <StatusBadge
+                      tone={
+                        diagnostics.scheduler?.automationTimer &&
+                        diagnostics.scheduler?.workflowTimer &&
+                        diagnostics.scheduler?.cleanupTimer
+                          ? 'ok'
+                          : 'warn'
+                      }
+                    >
+                      {diagnostics.scheduler?.automationTimer &&
+                      diagnostics.scheduler?.workflowTimer &&
+                      diagnostics.scheduler?.cleanupTimer
+                        ? '執行中'
+                        : '部分停止（可用下方「重新載入排程」修復）'}
+                    </StatusBadge>
+                  </Row>
+                  <Row label="資料夾監控">
+                    <StatusBadge
+                      tone={
+                        diagnostics.watcher?.enabled && !diagnostics.watcher?.paused ? 'ok' : 'warn'
+                      }
+                    >
+                      {!diagnostics.watcher?.enabled
+                        ? '已停用'
+                        : diagnostics.watcher?.paused
+                          ? '已暫停'
+                          : `監控中（${diagnostics.watcher?.watched ?? 0} 個資料夾）`}
+                    </StatusBadge>
+                  </Row>
+                  <Row
+                    label="重新載入排程"
+                    desc="重建排程計時器與資料夾監控。排程看起來沒有在跑時先用這個。"
+                  >
+                    <Button
+                      size="sm"
+                      busy={repairBusy === 'reloadSchedules'}
+                      onClick={() => runRepair('reloadSchedules', '重新載入排程')}
+                    >
+                      執行
+                    </Button>
+                  </Row>
+                  <Row
+                    label="清除排程快取"
+                    desc="清除「上次觸發時間」記錄。排程規則卡住不觸發時使用；下一輪會重新計時。"
+                  >
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      busy={repairBusy === 'clearScheduleState'}
+                      onClick={() => runRepair('clearScheduleState', '清除排程快取')}
+                    >
+                      清除
+                    </Button>
+                  </Row>
+                  <Row
+                    label="重新初始化本機設定"
+                    desc="用預設值補齊缺漏欄位並修正格式，不會刪除你的規則、工作流與偏好。"
+                  >
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      busy={repairBusy === 'reinitSettings'}
+                      onClick={() => runRepair('reinitSettings', '重新初始化設定')}
+                    >
+                      執行
+                    </Button>
+                  </Row>
+                  <Row label="開啟診斷 Logs" desc="所有紀錄僅保存在本機。">
+                    <Button size="sm" variant="ghost" onClick={() => window.api.openLogs()}>
+                      開啟
+                    </Button>
+                  </Row>
+                </>
+              ) : null}
             </Card>
           ) : null}
 

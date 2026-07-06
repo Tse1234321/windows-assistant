@@ -25,14 +25,19 @@ export default function HealthMonitor() {
     }
 
     setLoading(true);
-    const res = await window.api.getSystemStatus();
-    if (res.ok) {
-      setStatus(res);
-      setError('');
-    } else {
-      setError(res.error || '讀取健康狀態失敗');
+    try {
+      const res = await window.api.getSystemStatus();
+      if (res.ok) {
+        setStatus(res);
+        setError('');
+      } else {
+        setError(res.error || '讀取健康狀態失敗');
+      }
+    } catch (err) {
+      setError(err?.message || '讀取健康狀態失敗');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {

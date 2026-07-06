@@ -12,6 +12,7 @@ const {
   isDestructiveNode,
   migrateAutomationsToWorkflows,
   listWorkflows,
+  savedWorkflows,
 } = workflow;
 
 function makeWorkflow(nodes, edges, overrides = {}) {
@@ -112,6 +113,37 @@ describe('runWorkflow', () => {
     expect(res.skipped).toBe('disabled');
   });
 
+  it('a schedule event with dueNodeIds only fires the due schedule trigger', async () => {
+    // Two independent schedule triggers (e.g. every-5-min and daily-09:00).
+    // When only t1 is due, t2's branch must NOT run.
+    const wf = makeWorkflow(
+      [
+        { id: 't1', kind: 'trigger', type: 'schedule', config: { everyMinutes: 5 } },
+        { id: 't2', kind: 'trigger', type: 'schedule', config: { time: '09:00' } },
+        actionNode('a1', 'cleanupReminder'),
+        actionNode('a2', 'cleanupReminder'),
+      ],
+      [
+        { id: 'e1', source: 't1', target: 'a1' },
+        { id: 'e2', source: 't2', target: 'a2' },
+      ],
+    );
+    const res = await runWorkflow(wf, { kind: 'schedule', dueNodeIds: ['t1'], info: {} });
+    expect(res.steps.map((step) => step.nodeId)).toEqual(['a1']);
+  });
+
+  it('a schedule event without dueNodeIds keeps firing every schedule trigger', async () => {
+    const wf = makeWorkflow(
+      [
+        { id: 't1', kind: 'trigger', type: 'schedule', config: {} },
+        actionNode('a1', 'cleanupReminder'),
+      ],
+      [{ id: 'e1', source: 't1', target: 'a1' }],
+    );
+    const res = await runWorkflow(wf, { kind: 'schedule', info: {} });
+    expect(res.steps).toHaveLength(1);
+  });
+
   it('reports no-trigger when the event matches nothing', async () => {
     const wf = makeWorkflow(
       [{ id: 't1', kind: 'trigger', type: 'schedule', config: {} }, actionNode('a1', 'notify')],
@@ -189,5 +221,27 @@ describe('legacy migration', () => {
     const existing = [{ id: 'w', name: 'kept', enabled: true, nodes: [], edges: [] }];
     const result = listWorkflows({ workflows: existing, automations: [{ id: 'r1' }] });
     expect(result).toBe(existing);
+  });
+
+  it('migration produces deterministic node ids for the same rule', () => {
+    // Schedule dedupe keys are `${workflow.id}:${node.id}` — if migration made up
+    // fresh ids on every call, every scheduler tick would see a brand-new key
+    // and a migrated schedule rule would fire every minute.
+    const rule = { id: 'r1', condition: { type: 'schedule' }, action: { type: 'notify' } };
+    const [first] = migrateAutomationsToWorkflows([rule]);
+    const [second] = migrateAutomationsToWorkflows([rule]);
+    expect(first.nodes.map((node) => node.id)).toEqual(second.nodes.map((node) => node.id));
+    expect(first.edges[0].id).toBe(second.edges[0].id);
+  });
+
+  it('savedWorkflows never includes the migrated legacy view', () => {
+    // Background execution must only see user-saved workflows: legacy automations
+    // already run through automationService, so executing their migrated copies
+    // too would run each rule twice per event.
+    expect(savedWorkflows({ automations: [{ id: 'r1' }] })).toEqual([]);
+    const existing = [{ id: 'w', name: 'kept', enabled: true, nodes: [], edges: [] }];
+    expect(savedWorkflows({ workflows: existing })).toEqual(existing);
+    expect(savedWorkflows({})).toEqual([]);
+    expect(savedWorkflows(null)).toEqual([]);
   });
 });
