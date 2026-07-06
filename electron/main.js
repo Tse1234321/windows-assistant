@@ -1805,32 +1805,50 @@ function registerIpc() {
         }
       }
 
+      const storage = { ok: storageOk, error: storageError };
+      const scheduler = {
+        automationTimer: automationService.isSchedulerRunning(),
+        workflowTimer: !!workflowScheduleTimer,
+        cleanupTimer: !!cleanupScheduleTimer,
+        trackedSchedules: schedule.trackedSchedules,
+      };
+      const watcher = {
+        enabled: !(config.general && config.general.watchEnabled === false),
+        paused: fileWatcherService.isPaused(),
+        watched: fileWatcherService.watchedCount(),
+      };
+      const workflowStats = {
+        total: workflows.length,
+        enabled: workflows.filter((wf) => wf && wf.enabled !== false).length,
+      };
+      const automationStats = {
+        total: automations.length,
+        enabled: automations.filter((rule) => rule && rule.enabled !== false).length,
+      };
+      // Plain-language verdict shown at the top of the panel so the user can see
+      // what's wrong without reading the raw JSON.
+      const summary = diagnosticsService.analyzeDiagnostics({
+        storage,
+        scheduler,
+        watcher,
+        workflows: workflowStats,
+        automations: automationStats,
+        errorCount: logger.recent('error').length,
+      });
+
       return {
         ok: true,
         appVersion: app.getVersion(),
         settingsPath: res.path,
-        storage: { ok: storageOk, error: storageError },
-        workflows: {
-          total: workflows.length,
-          enabled: workflows.filter((wf) => wf && wf.enabled !== false).length,
-        },
-        automations: {
-          total: automations.length,
-          enabled: automations.filter((rule) => rule && rule.enabled !== false).length,
-        },
+        overall: summary.overall,
+        findings: summary.findings,
+        storage,
+        workflows: workflowStats,
+        automations: automationStats,
         lastWorkflowRunAt: lastWorkflowRunAt || schedule.lastFiredAt || null,
         lastAutomationRunAt: lastAutomationRunAt || null,
-        scheduler: {
-          automationTimer: automationService.isSchedulerRunning(),
-          workflowTimer: !!workflowScheduleTimer,
-          cleanupTimer: !!cleanupScheduleTimer,
-          trackedSchedules: schedule.trackedSchedules,
-        },
-        watcher: {
-          enabled: !(config.general && config.general.watchEnabled === false),
-          paused: fileWatcherService.isPaused(),
-          watched: fileWatcherService.watchedCount(),
-        },
+        scheduler,
+        watcher,
       };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -1963,6 +1981,7 @@ function registerIpc() {
             lastScheduledFireAt: schedule.lastFiredAt,
           },
           watcher: {
+            enabled: !(loadConfig().general && loadConfig().general.watchEnabled === false),
             paused: fileWatcherService.isPaused(),
             watched: fileWatcherService.watchedCount(),
           },
@@ -1998,7 +2017,25 @@ function registerIpc() {
         };
       }),
     };
-    return diagnosticsService.buildDiagnosticsReport(sections);
+    const report = diagnosticsService.buildDiagnosticsReport(sections);
+
+    // Plain-language verdict at the top of the bundle, computed from the same
+    // sections, so whoever opens the JSON reads the conclusion first.
+    const storageChecks = report.storage && report.storage.settingsFile;
+    const errorList = report.recentErrors && report.recentErrors.fromFile;
+    const summary = diagnosticsService.analyzeDiagnostics({
+      storage: storageChecks
+        ? { ok: storageChecks.readable === true && storageChecks.writable === true, error: storageChecks.error }
+        : { ok: false },
+      scheduler: (report.runtime && report.runtime.scheduler) || {},
+      watcher: (report.runtime && report.runtime.watcher) || {},
+      workflows: report.workflows || {},
+      automations: report.automations || {},
+      errorCount: Array.isArray(errorList) ? errorList.length : 0,
+    });
+
+    const { bundle, bundleVersion, generatedAt, ...rest } = report;
+    return { bundle, bundleVersion, generatedAt, summary, ...rest };
   }
 
   ipcMain.handle('diagnostics:export', async () => {
@@ -2016,6 +2053,10 @@ function registerIpc() {
         ok: true,
         path: out.filePath,
         sectionErrors: report.sectionErrors,
+        overall: report.summary && report.summary.overall,
+        issueCount: ((report.summary && report.summary.findings) || []).filter(
+          (finding) => finding.level === 'warn' || finding.level === 'error',
+        ).length,
       };
     } catch (err) {
       writeLog('error', `diagnostics export failed: ${err.message}`);

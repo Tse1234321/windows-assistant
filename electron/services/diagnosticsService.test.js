@@ -8,8 +8,18 @@ const {
   summarizeWorkflows,
   summarizeAutomations,
   buildDiagnosticsReport,
+  analyzeDiagnostics,
   REDACTED,
 } = diagnostics;
+
+const healthyMetrics = {
+  storage: { ok: true },
+  scheduler: { automationTimer: true, workflowTimer: true, cleanupTimer: true },
+  watcher: { enabled: true, paused: false, watched: 3 },
+  workflows: { total: 2, enabled: 1 },
+  automations: { total: 1, enabled: 1 },
+  errorCount: 0,
+};
 
 describe('redactSensitive', () => {
   it('masks sensitive keys but keeps structure and safe values', () => {
@@ -137,5 +147,60 @@ describe('buildDiagnosticsReport', () => {
     });
     expect(report.settings.snapshot.apiKey).toBe(REDACTED);
     expect(report.settings.snapshot.theme).toBe('dark');
+  });
+});
+
+describe('analyzeDiagnostics', () => {
+  it('reports "no problems" when everything is healthy', () => {
+    const { overall, findings } = analyzeDiagnostics(healthyMetrics);
+    expect(overall).toBe('ok');
+    expect(findings).toHaveLength(1);
+    expect(findings[0].level).toBe('ok');
+    expect(findings[0].title).toContain('未發現明顯問題');
+  });
+
+  it('flags unwritable storage as an error with the highest overall severity', () => {
+    const { overall, findings } = analyzeDiagnostics({
+      ...healthyMetrics,
+      storage: { ok: false, error: 'EACCES' },
+    });
+    expect(overall).toBe('error');
+    const storageFinding = findings.find((f) => f.level === 'error');
+    expect(storageFinding.title).toContain('設定無法讀寫');
+    expect(storageFinding.detail).toContain('EACCES');
+  });
+
+  it('warns when a scheduler timer is not running', () => {
+    const { overall, findings } = analyzeDiagnostics({
+      ...healthyMetrics,
+      scheduler: { automationTimer: true, workflowTimer: false, cleanupTimer: true },
+    });
+    expect(overall).toBe('warn');
+    expect(findings.some((f) => f.title.includes('排程服務未完全啟動'))).toBe(true);
+  });
+
+  it('distinguishes disabled (info) from paused (warn) watcher states', () => {
+    const disabled = analyzeDiagnostics({ ...healthyMetrics, watcher: { enabled: false } });
+    expect(disabled.overall).toBe('ok'); // info-only does not raise overall
+    expect(disabled.findings.some((f) => f.level === 'info')).toBe(true);
+
+    const paused = analyzeDiagnostics({
+      ...healthyMetrics,
+      watcher: { enabled: true, paused: true },
+    });
+    expect(paused.overall).toBe('warn');
+    expect(paused.findings.some((f) => f.title.includes('暫停'))).toBe(true);
+  });
+
+  it('surfaces recent error count', () => {
+    const { findings } = analyzeDiagnostics({ ...healthyMetrics, errorCount: 4 });
+    expect(findings.some((f) => f.title.includes('4 筆錯誤'))).toBe(true);
+  });
+
+  it('tolerates missing metrics without throwing', () => {
+    const { overall, findings } = analyzeDiagnostics();
+    expect(['ok', 'warn', 'error']).toContain(overall);
+    expect(Array.isArray(findings)).toBe(true);
+    expect(findings.length).toBeGreaterThan(0);
   });
 });

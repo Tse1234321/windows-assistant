@@ -37,6 +37,14 @@ const CATEGORIES = [
 
 const ACCENTS = ['#2f81f7', '#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2'];
 
+// Map a diagnostics finding level to a StatusBadge tone.
+function findingTone(level) {
+  if (level === 'error') return 'danger';
+  if (level === 'warn') return 'warn';
+  if (level === 'info') return 'muted';
+  return 'ok';
+}
+
 function Row({ label, desc, children }) {
   return (
     <div className="setting-row">
@@ -340,7 +348,9 @@ export default function Settings() {
           result.sectionErrors && Object.keys(result.sectionErrors).length
             ? '（部分項目讀取失敗，已記錄在檔案內）'
             : '';
-        toast(`診斷包已匯出${partial}：${result.path}`, 'ok');
+        const issues =
+          result.issueCount > 0 ? `，發現 ${result.issueCount} 個需要注意的項目` : '';
+        toast(`診斷包已匯出${issues}${partial}：${result.path}`, 'ok');
         window.api.revealPath?.(result.path);
       } else if (!result?.canceled) {
         toast(result?.error || '診斷包匯出失敗', 'error');
@@ -1090,6 +1100,29 @@ export default function Settings() {
               ) : null}
               {diagnostics ? (
                 <>
+                  {Array.isArray(diagnostics.findings) && diagnostics.findings.length ? (
+                    <div className="diag-findings">
+                      <div className="diag-findings-head">
+                        <StatusBadge tone={findingTone(diagnostics.overall)}>
+                          {diagnostics.overall === 'error'
+                            ? '發現問題'
+                            : diagnostics.overall === 'warn'
+                              ? '有需要注意的項目'
+                              : '狀態正常'}
+                        </StatusBadge>
+                        <span className="diag-findings-title">診斷結論</span>
+                      </div>
+                      {diagnostics.findings.map((finding, index) => (
+                        <div className={`diag-finding ${finding.level}`} key={index}>
+                          <span className="diag-finding-dot" aria-hidden="true" />
+                          <div>
+                            <strong>{finding.title}</strong>
+                            {finding.detail ? <span>{finding.detail}</span> : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <Row label="App 版本">
                     <StatusBadge tone="ok">v{diagnostics.appVersion}</StatusBadge>
                   </Row>

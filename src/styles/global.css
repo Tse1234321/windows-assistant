@@ -911,6 +911,66 @@ li.palette-item {
   padding: 20px 0;
 }
 
+/* Diagnostics plain-language verdict block (Settings → 診斷/修復) */
+.diag-findings {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg, rgba(148, 163, 184, 0.06));
+}
+.diag-findings-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.diag-findings-title {
+  font-weight: 600;
+  color: var(--text);
+}
+.diag-finding {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.diag-finding:first-of-type {
+  border-top: none;
+}
+.diag-finding-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+.diag-finding.error .diag-finding-dot {
+  background: var(--danger);
+}
+.diag-finding.warn .diag-finding-dot {
+  background: var(--warning, #d97706);
+}
+.diag-finding.ok .diag-finding-dot {
+  background: var(--success, #16a34a);
+}
+.diag-finding.info .diag-finding-dot {
+  background: var(--accent);
+}
+.diag-finding strong {
+  display: block;
+  color: var(--text);
+  font-size: 13.5px;
+}
+.diag-finding span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 /* Page-level error boundary (a crashed page shows this instead of white) */
 .error-boundary {
   display: flex;

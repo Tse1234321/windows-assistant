@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.5.7 — Plain-language diagnostics verdict (2026-07-06)
+
+Follow-up to the diagnostics bundle: the raw JSON was accurate but unreadable
+for non-technical users ("一長串 code，看不出問題"). The panel and the export
+now lead with a plain-language conclusion.
+
+- **診斷/修復 panel** shows a "診斷結論" block at the top: an overall
+  正常 / 有需要注意的項目 / 發現問題 badge plus a colour-coded list of specific
+  findings in Chinese (e.g. "本機設定無法讀寫", "排程服務未完全啟動",
+  "資料夾監控已暫停", "最近有 N 筆錯誤紀錄"), each with a one-line explanation
+  and what to do. No need to open the JSON to see what's wrong.
+- **Exported bundle** now carries a top-level `summary` ({ overall, findings })
+  computed from the same rules, so whoever opens the file reads the conclusion
+  first; the full structured data is still below it for deeper analysis.
+- Export success toast reports how many issues were found.
+- New pure function `analyzeDiagnostics` in diagnosticsService (6 unit tests);
+  e2e asserts the verdict block renders. No changes to data formats, schedulers,
+  or the redaction behaviour.
+
 ## 2.5.6 — Diagnostics bundle export (2026-07-06)
 
 Final stable-release follow-up: one new, self-contained tool — no external

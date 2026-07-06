@@ -132,6 +132,89 @@ function buildDiagnosticsReport(sections = {}, meta = {}) {
   return report;
 }
 
+/**
+ * Turn the raw diagnostics metrics into a short, plain-language verdict a
+ * non-technical user can act on — the "看不出問題" fix. Both the live panel and
+ * the exported bundle call this, so the summary the user sees on screen is
+ * exactly what a support person reads at the top of the JSON file.
+ *
+ * @param {object} metrics
+ *   { storage:{ok,error}, scheduler:{automationTimer,workflowTimer,cleanupTimer},
+ *     watcher:{enabled,paused,watched}, workflows:{total,enabled},
+ *     automations:{total,enabled}, errorCount }
+ * @returns {{ overall: 'ok'|'warn'|'error', findings: Array<{level,title,detail}> }}
+ */
+function analyzeDiagnostics(metrics = {}) {
+  const findings = [];
+  const storage = metrics.storage || {};
+  const scheduler = metrics.scheduler || {};
+  const watcher = metrics.watcher || {};
+  const errorCount = Number(metrics.errorCount || 0);
+
+  // Most severe first: can the app even save its own data?
+  if (storage.ok === false) {
+    findings.push({
+      level: 'error',
+      title: '本機設定無法讀寫',
+      detail:
+        '你的設定與規則可能無法儲存。請確認硬碟還有空間、App 有寫入權限，' +
+        '再試「重新初始化本機設定」。' + (storage.error ? `（原因：${storage.error}）` : ''),
+    });
+  }
+
+  // Are the background schedulers actually running?
+  const timers = [scheduler.automationTimer, scheduler.workflowTimer, scheduler.cleanupTimer];
+  const startedTimers = timers.filter((value) => value === true).length;
+  if (timers.some((value) => value === false)) {
+    findings.push({
+      level: 'warn',
+      title: '排程服務未完全啟動',
+      detail:
+        `目前只有 ${startedTimers} / 3 個排程計時器在執行，部分排程可能不會自動觸發。` +
+        '按下方「重新載入排程」通常即可修復。',
+    });
+  }
+
+  // Folder watching state (disabled is a choice, paused is usually accidental).
+  if (watcher.enabled === false) {
+    findings.push({
+      level: 'info',
+      title: '資料夾監控已停用',
+      detail: '新檔案不會自動觸發整理或工作流。可到「自動化」設定重新開啟。',
+    });
+  } else if (watcher.paused === true) {
+    findings.push({
+      level: 'warn',
+      title: '資料夾監控已暫停',
+      detail: '系統匣選單或設定把監控暫停了，暫停期間不會偵測新檔案。',
+    });
+  }
+
+  // Recent errors are a hint that something misbehaved.
+  if (errorCount > 0) {
+    findings.push({
+      level: 'warn',
+      title: `最近有 ${errorCount} 筆錯誤紀錄`,
+      detail: '代表某些功能執行時發生過錯誤。匯出診斷包並提供給開發者可協助分析。',
+    });
+  }
+
+  if (!findings.length) {
+    findings.push({
+      level: 'ok',
+      title: '未發現明顯問題',
+      detail: 'App 各項服務目前運作正常。',
+    });
+  }
+
+  const overall = findings.some((f) => f.level === 'error')
+    ? 'error'
+    : findings.some((f) => f.level === 'warn')
+      ? 'warn'
+      : 'ok';
+  return { overall, findings };
+}
+
 module.exports = {
   SENSITIVE_KEY_RE,
   REDACTED,
@@ -141,4 +224,5 @@ module.exports = {
   summarizeWorkflows,
   summarizeAutomations,
   buildDiagnosticsReport,
+  analyzeDiagnostics,
 };
