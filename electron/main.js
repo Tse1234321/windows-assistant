@@ -42,6 +42,7 @@ const toolchainService = require('./services/toolchainService');
 const buildService = require('./services/buildService');
 const serialService = require('./services/serialService');
 const dashboardService = require('./services/dashboardService');
+const diagnosticsService = require('./services/diagnosticsService');
 const overlayMetricsService = require('./services/overlayMetricsService');
 const brightnessService = require('./services/brightnessService');
 const { logger } = require('./services/loggerService');
@@ -211,8 +212,10 @@ async function onNewFile(info) {
     }
     if (g.automationsEnabled !== false) {
       const fired = await automationService.handleNewFile(configForAutomationRun(config), info);
-      if (fired.length)
+      if (fired.length) {
+        markAutomationRun();
         writeLog('info', `automation fired for ${info.file}: ${JSON.stringify(fired)}`);
+      }
       // Run enabled, user-saved visual workflows whose triggers match this file
       // event (the migrated editor-only view is excluded — those rules already
       // ran through automationService above).
@@ -251,6 +254,11 @@ let cleanupScheduleTimer = null;
 let lastWorkflowRunAt = 0;
 function markWorkflowRun() {
   lastWorkflowRunAt = Date.now();
+}
+// Diagnostics: when a flat automation rule last ran (file event, schedule, or manual).
+let lastAutomationRunAt = 0;
+function markAutomationRun() {
+  lastAutomationRunAt = Date.now();
 }
 
 // Find every enabled schedule trigger node that is currently due (reusing the
@@ -344,6 +352,7 @@ function startBackgroundServices() {
   // The flat-automation scheduler must not see rules that also exist as saved
   // workflows (they run through the workflow scheduler instead).
   automationService.startScheduler(() => configForAutomationRun(loadConfig()), (fired) => {
+    if (fired.length) markAutomationRun();
     writeLog('info', `scheduled automations fired: ${JSON.stringify(fired)}`);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:automation-fired', fired);
@@ -1607,6 +1616,7 @@ function registerIpc() {
     if (!rule) return { ok: false, error: '找不到自動化規則' };
     const result = await automationService.runRule(rule, config);
     if (result.ok) {
+      markAutomationRun();
       writeLog('info', `automation manual run: ${JSON.stringify(result)}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('app:automation-fired', [result]);
@@ -1809,6 +1819,7 @@ function registerIpc() {
           enabled: automations.filter((rule) => rule && rule.enabled !== false).length,
         },
         lastWorkflowRunAt: lastWorkflowRunAt || schedule.lastFiredAt || null,
+        lastAutomationRunAt: lastAutomationRunAt || null,
         scheduler: {
           automationTimer: automationService.isSchedulerRunning(),
           workflowTimer: !!workflowScheduleTimer,
@@ -1860,6 +1871,154 @@ function registerIpc() {
       }
     } catch (err) {
       writeLog('error', `diagnostics repair "${action}" failed: ${err.message}`);
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // One-click diagnostics bundle export. Strictly read-only: it never restarts
+  // schedulers or touches user data, and every section is collected in its own
+  // try/catch so one broken source can't fail the whole bundle. All content is
+  // redacted by diagnosticsService before it is written to disk.
+  const collectSection = (collect) => {
+    try {
+      return { ok: true, data: collect() };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  };
+
+  // Read the last `maxLines` JSON-line entries from <userData>/logs/app.log.
+  // A missing or unreadable file yields an empty list, never an error bundle.
+  function tailAppLog(maxLines = 300) {
+    const file = path.join(logsDir(), 'app.log');
+    if (!fs.existsSync(file)) return { file, lines: [], note: 'log file does not exist yet' };
+    const raw = fs.readFileSync(file, 'utf-8');
+    const lines = raw.split(/\r?\n/).filter(Boolean).slice(-maxLines);
+    return {
+      file,
+      lines: lines.map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch (_) {
+          return { raw: line };
+        }
+      }),
+    };
+  }
+
+  function collectDiagnosticsBundle() {
+    const os = require('os');
+    const sections = {
+      environment: collectSection(() => ({
+        appVersion: app.getVersion(),
+        packaged: app.isPackaged,
+        locale: app.getLocale(),
+        versions: {
+          electron: process.versions.electron,
+          chrome: process.versions.chrome,
+          node: process.versions.node,
+          v8: process.versions.v8,
+        },
+        os: {
+          platform: process.platform,
+          release: os.release(),
+          arch: process.arch,
+          totalMemMb: Math.round(os.totalmem() / 1024 / 1024),
+          freeMemMb: Math.round(os.freemem() / 1024 / 1024),
+        },
+        uptimeSeconds: Math.round(process.uptime()),
+      })),
+      settings: collectSection(() => {
+        const res = settingsService.getSettings();
+        return { path: res.path, ok: res.ok, snapshot: res.settings };
+      }),
+      workflows: collectSection(() => {
+        const config = loadConfig();
+        const saved = workflowService.savedWorkflows(config);
+        return {
+          total: saved.length,
+          enabled: saved.filter((wf) => wf && wf.enabled !== false).length,
+          summaries: diagnosticsService.summarizeWorkflows(saved),
+        };
+      }),
+      automations: collectSection(() => {
+        const config = loadConfig();
+        const rules = automationService.list(config);
+        return {
+          total: rules.length,
+          enabled: rules.filter((rule) => rule && rule.enabled !== false).length,
+          summaries: diagnosticsService.summarizeAutomations(rules),
+        };
+      }),
+      runtime: collectSection(() => {
+        const schedule = automationService.getScheduleDiagnostics();
+        return {
+          lastWorkflowRunAt: lastWorkflowRunAt || schedule.lastFiredAt || null,
+          lastAutomationRunAt: lastAutomationRunAt || null,
+          scheduler: {
+            automationTimer: automationService.isSchedulerRunning(),
+            workflowTimer: !!workflowScheduleTimer,
+            cleanupTimer: !!cleanupScheduleTimer,
+            trackedSchedules: schedule.trackedSchedules,
+            lastScheduledFireAt: schedule.lastFiredAt,
+          },
+          watcher: {
+            paused: fileWatcherService.isPaused(),
+            watched: fileWatcherService.watchedCount(),
+          },
+        };
+      }),
+      storage: collectSection(() => {
+        const res = settingsService.getSettings();
+        const checks = { settingsFile: { path: res.path, readable: false, writable: false } };
+        try {
+          fs.accessSync(res.path, fs.constants.R_OK);
+          checks.settingsFile.readable = true;
+          fs.accessSync(res.path, fs.constants.W_OK);
+          checks.settingsFile.writable = true;
+        } catch (err) {
+          checks.settingsFile.error = err.message;
+        }
+        checks.logsDir = { path: logsDir(), writable: false };
+        try {
+          fs.mkdirSync(logsDir(), { recursive: true });
+          fs.accessSync(logsDir(), fs.constants.W_OK);
+          checks.logsDir.writable = true;
+        } catch (err) {
+          checks.logsDir.error = err.message;
+        }
+        return checks;
+      }),
+      recentLogs: collectSection(() => tailAppLog(300)),
+      recentErrors: collectSection(() => {
+        const fileTail = tailAppLog(1000);
+        return {
+          fromFile: (fileTail.lines || []).filter((entry) => entry.level === 'error').slice(-100),
+          fromMemory: logger.recent('error'),
+        };
+      }),
+    };
+    return diagnosticsService.buildDiagnosticsReport(sections);
+  }
+
+  ipcMain.handle('diagnostics:export', async () => {
+    try {
+      const report = collectDiagnosticsBundle();
+      const out = await dialog.showSaveDialog(mainWindow, {
+        title: '匯出診斷包',
+        defaultPath: diagnosticsService.diagnosticsFileName(),
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (out.canceled || !out.filePath) return { ok: false, canceled: true };
+      fs.writeFileSync(out.filePath, JSON.stringify(report, null, 2), 'utf-8');
+      writeLog('info', `diagnostics bundle exported: ${out.filePath}`);
+      return {
+        ok: true,
+        path: out.filePath,
+        sectionErrors: report.sectionErrors,
+      };
+    } catch (err) {
+      writeLog('error', `diagnostics export failed: ${err.message}`);
       return { ok: false, error: err.message };
     }
   });

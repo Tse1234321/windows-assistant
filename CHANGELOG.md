@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.5.6 — Diagnostics bundle export (2026-07-06)
+
+Final stable-release follow-up: one new, self-contained tool — no external
+APIs, no paid services, no changes to existing data formats.
+
+### New: one-click diagnostics bundle (Settings → 診斷/修復 → 匯出診斷包)
+
+- Exports a single `nexus-diagnostics-YYYYMMDD-HHmmss.json` chosen via a save
+  dialog; the containing folder is revealed on success.
+- Contents: app version + Electron/Chrome/Node/V8 versions + OS info; a
+  settings snapshot; workflow and automation counts (total/enabled) with
+  structural summaries (node kinds/types, edge counts, schedule flags); last
+  workflow and last automation run times; scheduler timer + watcher status;
+  settings-file and logs-dir read/write checks; the last 300 log lines and the
+  most recent error entries (file + in-memory ring buffer).
+- **Privacy:** everything passes through a redaction layer before being
+  written — object keys matching apiKey / access key / token / password /
+  secret / authorization / bearer / cookie / credential are masked, and
+  `Bearer <token>` or `key: value` fragments embedded in log strings are
+  scrubbed. Structure and non-sensitive values are preserved.
+- **Resilience:** each section is collected in its own try/catch; a failing
+  source (e.g. unreadable log file) is recorded under `sectionErrors` and the
+  bundle still exports. Missing logs produce an empty section, not a failure.
+  Export is strictly read-only: it never restarts schedulers or touches user
+  data.
+- New IPC: `diagnostics:export` (main-process file access only; renderer never
+  touches Node APIs). New service `electron/services/diagnosticsService.js`
+  with unit tests; Playwright e2e covers the panel, success, failure, and
+  cancel paths.
+
 ## 2.5.5 — Stability release (2026-07-06)
 
 Final stabilization pass. No new major features; this release focuses on

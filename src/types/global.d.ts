@@ -55,6 +55,7 @@ interface AppApi {
   setBrightness?: (level: number) => Promise<any>;
   getDiagnostics?: () => Promise<any>;
   runRepair?: (action: string) => Promise<any>;
+  exportDiagnostics?: () => Promise<any>;
   openExternal?: (url: string) => Promise<any>;
   pickPath?: (opts: { type: 'file' | 'folder'; title?: string }) => Promise<{ ok?: boolean; path?: string; canceled?: boolean; error?: string }>;
   [key: string]: unknown;

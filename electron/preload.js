@@ -233,6 +233,7 @@ contextBridge.exposeInMainWorld('api', {
   // Diagnostics / repair panel
   getDiagnostics: () => ipcRenderer.invoke('diagnostics:get'),
   runRepair: (action) => ipcRenderer.invoke('diagnostics:repair', action),
+  exportDiagnostics: () => ipcRenderer.invoke('diagnostics:export'),
 
   // VS Code path
   detectVSCode: () => ipcRenderer.invoke('vscode:detect'),

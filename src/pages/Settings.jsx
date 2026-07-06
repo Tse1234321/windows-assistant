@@ -75,6 +75,7 @@ export default function Settings() {
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [diagnosticsError, setDiagnosticsError] = useState('');
   const [repairBusy, setRepairBusy] = useState('');
+  const [exportingDiagnostics, setExportingDiagnostics] = useState(false);
 
   const general = settings?.general || {};
   const guard = settings?.healthGuard || {};
@@ -323,6 +324,31 @@ export default function Settings() {
     } finally {
       setRepairBusy('');
       loadDiagnostics();
+    }
+  };
+
+  const exportDiagnosticsBundle = async () => {
+    if (!window.api?.exportDiagnostics) {
+      toast('此版本尚未支援診斷包匯出', 'warn');
+      return;
+    }
+    setExportingDiagnostics(true);
+    try {
+      const result = await window.api.exportDiagnostics();
+      if (result?.ok) {
+        const partial =
+          result.sectionErrors && Object.keys(result.sectionErrors).length
+            ? '（部分項目讀取失敗，已記錄在檔案內）'
+            : '';
+        toast(`診斷包已匯出${partial}：${result.path}`, 'ok');
+        window.api.revealPath?.(result.path);
+      } else if (!result?.canceled) {
+        toast(result?.error || '診斷包匯出失敗', 'error');
+      }
+    } catch (err) {
+      toast(err?.message || '診斷包匯出失敗', 'error');
+    } finally {
+      setExportingDiagnostics(false);
     }
   };
 
@@ -1159,6 +1185,18 @@ export default function Settings() {
                       onClick={() => runRepair('reinitSettings', '重新初始化設定')}
                     >
                       執行
+                    </Button>
+                  </Row>
+                  <Row
+                    label="匯出診斷包"
+                    desc="產生一份 JSON 診斷檔（app 版本、系統資訊、設定快照、規則摘要、最近 logs）。API key、token、密碼等敏感欄位會自動遮蔽；完成後會開啟檔案所在資料夾。"
+                  >
+                    <Button
+                      size="sm"
+                      busy={exportingDiagnostics}
+                      onClick={exportDiagnosticsBundle}
+                    >
+                      匯出診斷包
                     </Button>
                   </Row>
                   <Row label="開啟診斷 Logs" desc="所有紀錄僅保存在本機。">
