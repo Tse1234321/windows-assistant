@@ -31,18 +31,27 @@ jobs:
       - name: Build and publish Windows installer
         shell: pwsh
         run: |
+          $releaseTag = $env:GITHUB_REF_NAME
           if ($env:WIN_CSC_LINK -and $env:WIN_CSC_KEY_PASSWORD) {
             Write-Host 'Trusted Windows signing credentials detected; publishing signed installer.'
-            npm run release:signed
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             $notes = 'Windows installer published with the configured trusted signing identity.'
           } else {
             Write-Warning 'Trusted Windows signing credentials are not configured; publishing unsigned installer.'
-            npm run release:unsigned
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             $notes = 'This release contains an unsigned Windows installer because trusted signing credentials were not configured. SmartScreen may display a warning and no publisher reputation is attached.'
           }
-          gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --notes $notes
+          gh release view $releaseTag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $releaseTag --repo $env:GITHUB_REPOSITORY --title "PC Life Assistant $releaseTag" --notes $notes
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            gh release edit $releaseTag --repo $env:GITHUB_REPOSITORY --notes $notes
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if ($env:WIN_CSC_LINK -and $env:WIN_CSC_KEY_PASSWORD) {
+            npm run release:signed
+          } else {
+            npm run release:unsigned
+          }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

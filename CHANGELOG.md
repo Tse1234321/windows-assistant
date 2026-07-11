@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.11 - Reliable automatic release publishing (2026-07-11)
+
+The tag workflow now creates the GitHub release before electron-builder starts
+uploading, preventing parallel publisher calls from creating duplicate drafts or
+leaving a release with only a partial asset set.
+
+- Pre-creates one release with explicit signed/unsigned notes.
+- Uploads the installer, blockmap, and update manifest to that release.
+
 ## 2.5.10 - Automatic unsigned release fallback (2026-07-11)
 
 This release keeps the public tag workflow usable when no trusted Windows code
