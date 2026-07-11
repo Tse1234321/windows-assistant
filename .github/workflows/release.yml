@@ -41,7 +41,7 @@ jobs:
           }
           gh release view $releaseTag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $releaseTag --repo $env:GITHUB_REPOSITORY --title "PC Life Assistant $releaseTag" --notes $notes
+            gh release create $releaseTag --repo $env:GITHUB_REPOSITORY --draft --title "PC Life Assistant $releaseTag" --notes $notes
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } else {
             gh release edit $releaseTag --repo $env:GITHUB_REPOSITORY --notes $notes
@@ -52,6 +52,8 @@ jobs:
           } else {
             npm run release:unsigned
           }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release edit $releaseTag --repo $env:GITHUB_REPOSITORY --draft=false --notes $notes
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

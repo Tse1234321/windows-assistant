@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.12 - Draft-first release publishing (2026-07-11)
+
+The automatic release fallback now creates a draft GitHub release before
+electron-builder uploads assets, then publishes it only after the installer,
+blockmap, and update manifest upload successfully.
+
+- Prevented electron-builder from skipping assets when it encounters a pre-existing published release.
+- Kept unsigned-release disclosure in the published notes.
+
 ## 2.5.11 - Reliable automatic release publishing (2026-07-11)
 
 The tag workflow now creates the GitHub release before electron-builder starts
