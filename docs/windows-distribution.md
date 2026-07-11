@@ -25,10 +25,10 @@ Set these only on the release machine or CI secret store:
 [Environment]::SetEnvironmentVariable('WIN_CSC_KEY_PASSWORD', '<pfx-password>', 'User')
 ```
 
-Then open a new terminal and build:
+Then open a new terminal and run the fail-closed signed build:
 
 ```powershell
-npm run package
+npm run package:signed
 ```
 
 Electron Builder also supports `CSC_LINK` and `CSC_KEY_PASSWORD`; the `WIN_*`
@@ -41,7 +41,7 @@ certificate subject name before building:
 
 ```powershell
 [Environment]::SetEnvironmentVariable('CSC_NAME', '<exact certificate subject>', 'User')
-npm run package
+npm run package:signed
 ```
 
 Hardware-backed EV certificates may require the token or provider UI during the
@@ -50,7 +50,11 @@ build.
 ## Verify The Installer
 
 ```powershell
-Get-AuthenticodeSignature .\release-auto\PC-Life-Assistant-Setup-2.2.0.exe | Format-List
+$installer = Get-ChildItem .\release-auto\PC-Life-Assistant-Setup-*.exe |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1
+Get-AuthenticodeSignature -LiteralPath $installer.FullName | Format-List
+Get-AuthenticodeSignature -LiteralPath '.\release-auto\win-unpacked\PC Life Assistant.exe' | Format-List
 ```
 
 Expected result:
@@ -58,6 +62,28 @@ Expected result:
 - `Status` is `Valid`
 - `SignerCertificate.Subject` matches your publisher identity
 - The installer and unpacked executable are both signed
+
+## Local Development Versus Public Release
+
+- `npm run package` and `npm run package:dir` allow unsigned local development builds.
+- `npm run package:signed` requires signing credentials and passes `forceCodeSigning=true` to electron-builder.
+- `npm run release:github` and `npm run release:signed` require signing credentials before publishing.
+- `scripts/check-signing-env.mjs` validates only credential presence. It never prints or reads certificate contents.
+
+The signed commands fail before packaging when neither a complete `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` pair nor `CSC_NAME` exists. This prevents the tag workflow from silently publishing an unsigned installer.
+
+## GitHub Actions Secrets
+
+Configure these repository or environment secrets before pushing a version tag:
+
+- `WIN_CSC_LINK`: a GitHub-secret-compatible electron-builder certificate link or base64-encoded PFX payload.
+- `WIN_CSC_KEY_PASSWORD`: the PFX password.
+
+The workflow passes them directly to electron-builder. Do not write them into workflow YAML, `.env` files, artifacts, logs, or repository settings templates. Certificate-store and hardware-token builds are normally performed on a controlled self-hosted Windows runner using `CSC_NAME` and the provider's secure token setup.
+
+If trusted credentials are absent, the honest status is:
+
+> Signing configuration prepared, trusted certificate unavailable.
 
 ## SmartScreen Notes
 
@@ -67,4 +93,3 @@ Expected result:
 - New file hashes and new certificates may need time to build reputation.
 - If Defender falsely flags the file as malware, submit the signed installer to
   Microsoft Security Intelligence for analysis.
-

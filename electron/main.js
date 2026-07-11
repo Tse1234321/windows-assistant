@@ -44,8 +44,10 @@ const serialService = require('./services/serialService');
 const dashboardService = require('./services/dashboardService');
 const diagnosticsService = require('./services/diagnosticsService');
 const overlayMetricsService = require('./services/overlayMetricsService');
+const stirlingService = require('./services/stirlingService');
 const brightnessService = require('./services/brightnessService');
 const { logger } = require('./services/loggerService');
+const { DASHBOARD_CHANNELS } = require('./ipcChannels');
 
 const isDev = !app.isPackaged;
 
@@ -351,13 +353,16 @@ function startBackgroundServices() {
   healthGuardService.start(getConfig, { runNow: true });
   // The flat-automation scheduler must not see rules that also exist as saved
   // workflows (they run through the workflow scheduler instead).
-  automationService.startScheduler(() => configForAutomationRun(loadConfig()), (fired) => {
-    if (fired.length) markAutomationRun();
-    writeLog('info', `scheduled automations fired: ${JSON.stringify(fired)}`);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('app:automation-fired', fired);
-    }
-  });
+  automationService.startScheduler(
+    () => configForAutomationRun(loadConfig()),
+    (fired) => {
+      if (fired.length) markAutomationRun();
+      writeLog('info', `scheduled automations fired: ${JSON.stringify(fired)}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:automation-fired', fired);
+      }
+    },
+  );
   // Separate minute-cadence tick for schedule-triggered visual workflows.
   if (workflowScheduleTimer) clearInterval(workflowScheduleTimer);
   workflowScheduleTimer = setInterval(() => runScheduledWorkflows().catch(() => {}), 60 * 1000);
@@ -423,6 +428,8 @@ function createWindow(showOnReady = true) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // The PDF Tools page embeds the local Stirling-PDF UI in a <webview>.
+      webviewTag: true,
     },
   });
 
@@ -795,7 +802,7 @@ function createTray() {
 // IPC handlers (clearly namespaced: <domain>:<action>)
 // ---------------------------------------------------------------------------
 function registerIpc() {
-  ipcMain.handle('dashboard:getStats', async () => {
+  ipcMain.handle(DASHBOARD_CHANNELS.getStats, async () => {
     try {
       return await dashboardService.getDashboardStats(loadConfig());
     } catch (err) {
@@ -803,29 +810,52 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle('dashboard:browseNode', async (_event, targetPath) => {
+  ipcMain.handle(DASHBOARD_CHANNELS.browseNode, async (_event, request) => {
     try {
-      return await dashboardService.browseNodePath(targetPath);
+      return await dashboardService.browseNode(request, loadConfig());
     } catch (err) {
-      return { ok: false, error: err.message };
+      writeLog('error', `dashboard browse failed: ${err.message}`);
+      return { ok: false, code: 'read_failed', message: 'The folder could not be read.' };
     }
   });
 
-  ipcMain.handle('dashboard:searchFolders', async (_event, query) => {
+  ipcMain.handle(DASHBOARD_CHANNELS.searchFolders, async (_event, query) => {
     try {
-      return await dashboardService.searchFolderNodes(query);
+      return await dashboardService.searchFolderNodes(query, loadConfig());
     } catch (err) {
-      return { ok: false, error: err.message, nodes: [] };
+      writeLog('error', `dashboard search failed: ${err.message}`);
+      return { ok: false, code: 'read_failed', message: 'Folder search failed.', nodes: [] };
+    }
+  });
+
+  ipcMain.handle(DASHBOARD_CHANNELS.previewNode, async (_event, request) => {
+    try {
+      return await dashboardService.previewNode(request, loadConfig());
+    } catch (err) {
+      writeLog('error', `dashboard preview failed: ${err.message}`);
+      return { ok: false, code: 'read_failed', message: 'The file preview failed.' };
+    }
+  });
+
+  ipcMain.handle(DASHBOARD_CHANNELS.revealNode, async (_event, request) => {
+    try {
+      const resolved = await dashboardService.resolveAuthorizedNode(request, loadConfig());
+      if (!resolved.ok) return resolved;
+      shell.showItemInFolder(resolved.record.canonicalPath);
+      return { ok: true, nodeId: request.nodeId };
+    } catch (err) {
+      writeLog('error', `dashboard reveal failed: ${err.message}`);
+      return { ok: false, code: 'read_failed', message: 'The item could not be revealed.' };
     }
   });
 
   ipcMain.handle('shell:revealPath', async (_event, targetPath) => {
     try {
-      if (!targetPath || !fs.existsSync(targetPath)) {
+      if (typeof targetPath !== 'string' || !targetPath || !fs.existsSync(targetPath)) {
         return { ok: false, error: 'Path not found.' };
       }
       shell.showItemInFolder(path.resolve(targetPath));
-      return { ok: true, path: targetPath };
+      return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
     }
@@ -1024,6 +1054,29 @@ function registerIpc() {
     ),
   );
   ipcMain.handle('build:cancel', async () => buildService.cancelBuild());
+
+  // PDF Tools — Stirling-PDF runtime/JAR provisioning + local server lifecycle.
+  ipcMain.handle('stirling:getStatus', async () => stirlingService.getStatus());
+  ipcMain.handle('stirling:downloadJre', async () =>
+    stirlingService.downloadJre((progress) => sendToRenderer('stirling:progress', progress)),
+  );
+  ipcMain.handle('stirling:downloadJar', async () =>
+    stirlingService.downloadJar((progress) => sendToRenderer('stirling:progress', progress)),
+  );
+  ipcMain.handle('stirling:start', async (_event, options = {}) =>
+    stirlingService.start(
+      options,
+      (line) => sendToRenderer('stirling:log', line),
+      (state) => sendToRenderer('stirling:status', state),
+    ),
+  );
+  ipcMain.handle('stirling:stop', async () => stirlingService.stop());
+  ipcMain.handle('stirling:openExternal', async () => {
+    const status = await stirlingService.getStatus();
+    const url = status.server && status.server.url;
+    if (url) shell.openExternal(url);
+    return { ok: !!url };
+  });
 
   // Serial Monitor — list ports and stream incoming data.
   ipcMain.handle('serial:listPorts', async () => serialService.listPorts());
@@ -2025,7 +2078,10 @@ function registerIpc() {
     const errorList = report.recentErrors && report.recentErrors.fromFile;
     const summary = diagnosticsService.analyzeDiagnostics({
       storage: storageChecks
-        ? { ok: storageChecks.readable === true && storageChecks.writable === true, error: storageChecks.error }
+        ? {
+            ok: storageChecks.readable === true && storageChecks.writable === true,
+            error: storageChecks.error,
+          }
         : { ok: false },
       scheduler: (report.runtime && report.runtime.scheduler) || {},
       watcher: (report.runtime && report.runtime.watcher) || {},
@@ -2161,4 +2217,10 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  // Don't leave the Stirling-PDF Java server orphaned after the app exits.
+  try {
+    stirlingService.stop();
+  } catch (_) {
+    /* ignore */
+  }
 });

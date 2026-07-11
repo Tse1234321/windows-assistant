@@ -1,6 +1,7 @@
 'use strict';
 
 const { contextBridge, ipcRenderer } = require('electron');
+const { DASHBOARD_CHANNELS } = require('./ipcChannels');
 
 const cleanupApi = {
   scan: (payload) => ipcRenderer.invoke('cleanup:scan', payload),
@@ -85,9 +86,11 @@ const setupToolsApi = {
  */
 contextBridge.exposeInMainWorld('api', {
   // System / health
-  getDashboardStats: () => ipcRenderer.invoke('dashboard:getStats'),
-  browseDashboardNode: (targetPath) => ipcRenderer.invoke('dashboard:browseNode', targetPath),
-  searchDashboardFolders: (query) => ipcRenderer.invoke('dashboard:searchFolders', query),
+  getDashboardStats: () => ipcRenderer.invoke(DASHBOARD_CHANNELS.getStats),
+  browseDashboardNode: (request) => ipcRenderer.invoke(DASHBOARD_CHANNELS.browseNode, request),
+  searchDashboardFolders: (query) => ipcRenderer.invoke(DASHBOARD_CHANNELS.searchFolders, query),
+  previewDashboardNode: (request) => ipcRenderer.invoke(DASHBOARD_CHANNELS.previewNode, request),
+  revealDashboardNode: (request) => ipcRenderer.invoke(DASHBOARD_CHANNELS.revealNode, request),
   revealPath: (targetPath) => ipcRenderer.invoke('shell:revealPath', targetPath),
   getSystemStatus: () => ipcRenderer.invoke('system:getStatus'),
 
@@ -189,6 +192,31 @@ contextBridge.exposeInMainWorld('api', {
   antivirus: antivirusApi,
   adminLaunch: adminLaunchApi,
   setupTools: setupToolsApi,
+
+  // PDF Tools (embedded Stirling-PDF)
+  stirling: {
+    getStatus: () => ipcRenderer.invoke('stirling:getStatus'),
+    downloadJre: () => ipcRenderer.invoke('stirling:downloadJre'),
+    download: () => ipcRenderer.invoke('stirling:downloadJar'),
+    start: (options) => ipcRenderer.invoke('stirling:start', options),
+    stop: () => ipcRenderer.invoke('stirling:stop'),
+    openExternal: () => ipcRenderer.invoke('stirling:openExternal'),
+    onProgress: (callback) => {
+      const handler = (_event, progress) => callback(progress);
+      ipcRenderer.on('stirling:progress', handler);
+      return () => ipcRenderer.removeListener('stirling:progress', handler);
+    },
+    onStatus: (callback) => {
+      const handler = (_event, state) => callback(state);
+      ipcRenderer.on('stirling:status', handler);
+      return () => ipcRenderer.removeListener('stirling:status', handler);
+    },
+    onLog: (callback) => {
+      const handler = (_event, line) => callback(line);
+      ipcRenderer.on('stirling:log', handler);
+      return () => ipcRenderer.removeListener('stirling:log', handler);
+    },
+  },
 
   // System overlay
   overlay: {

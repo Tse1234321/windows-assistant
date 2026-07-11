@@ -19,14 +19,14 @@ One place to launch projects, organize files, monitor system health, and keep da
 <div align="center">
   <img src="docs/screenshots/01-dashboard.png" alt="PC Life Assistant — NEXUS Dashboard" width="90%" />
   <br/>
-  <sub><b>Dashboard</b> · An interactive 3D live-nodes globe surrounded by key metrics — PC health score, live system overview (CPU / RAM / disk / network), cleanup state, and recent activity.</sub>
+  <sub><b>Dashboard</b> · An interactive 3D data core that opens into categorized local files, projects, systems, cleanup, and automation nodes, surrounded by live system metrics.</sub>
 </div>
 
 ---
 
 ## ✨ Overview
 
-PC Life Assistant combines a daily workspace dashboard, project launcher, file organizer, system health monitor, automation rules, safe cleanup tools, a read-only Windows Security overview, and a gaming-style performance overlay into a single Electron app. The interface is branded **NEXUS** in-app and is fully **bilingual (English / 繁體中文)** with a language switch in Settings.
+PC Life Assistant combines a daily workspace dashboard, project launcher, file organizer, system health monitor, automation rules, safe cleanup tools, a read-only Windows Security overview, a local PDF toolbox, and a gaming-style performance overlay into a single Electron app. The interface is branded **NEXUS** in-app and is fully **bilingual (English / 繁體中文)** with a language switch in Settings.
 
 The goal is not to be another todo list — it's to **remove the small repeated steps** around everyday computer work: opening the same folders and tools, sorting the Downloads folder, keeping an eye on disk space and temperatures, and remembering which projects still need a Git commit.
 
@@ -43,12 +43,13 @@ The goal is not to be another todo list — it's to **remove the small repeated 
 
 | Area                     | What it does                                                                                                                                                                                                                                                                       |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Dashboard**            | Redesigned home view with an interactive 3D "live nodes" globe (Three.js), health score, live system overview (CPU / RAM / disk / network), cleanup state, and recent activity.                                                                                                    |
+| **Dashboard**            | Interactive Three.js data core with categorized local file, project, system, cleanup, and automation nodes; keyboard and mobile controls; health score; live system overview; and recent activity.                                                                                 |
 | **Project Hub**          | Scans your project roots, classifies projects by type, detects Git repos, filters and pins, and turns selected projects into a reusable Work Mode.                                                                                                                                 |
 | **Work Modes**           | Opens apps, folders, URLs, and shell commands as one repeatable workspace — for coding, study, design, reports, or hardware work.                                                                                                                                                  |
 | **Workspace Templates**  | Generates starter folders for Web, Python, JS/TS, C/C++, Java, Go, Rust, Arduino, FPGA (Verilog/VHDL), STM32, MATLAB, KiCad, and custom multi-language combos.                                                                                                                     |
 | **Clean Center**         | Reviews temp files, caches, large files, duplicates, downloads, and recycle bin — with conservative safety rules and confirm-before-action.                                                                                                                                        |
-| **Security Center**      | A read-only mirror of Windows Security status — Microsoft Defender, firewall profiles, TPM, BitLocker, and more — gathered with non-elevated PowerShell queries. It never changes security settings; it only reports them.                                                          |
+| **Security Center**      | A read-only mirror of Windows Security status — Microsoft Defender, firewall profiles, TPM, BitLocker, and more — gathered with non-elevated PowerShell queries. It never changes security settings; it only reports them.                                                         |
+| **PDF Tools**            | A full PDF toolbox (merge, split, rotate, compress, convert, and more) powered by an embedded local [Stirling-PDF](https://github.com/Stirling-Tools/Stirling-PDF) instance. The Java runtime and app are downloaded on demand on first use, and everything runs locally.          |
 | **Downloads Organizer**  | Scans Downloads, previews planned moves, classifies by rules, never overwrites, and keeps a restore option.                                                                                                                                                                        |
 | **Screenshot Organizer** | Groups screenshots by date and category using configurable keyword rules.                                                                                                                                                                                                          |
 | **System Monitor**       | Live CPU / RAM / disk / uptime, CPU & GPU temperatures, trend sparklines, and a tunable Health Guard.                                                                                                                                                                              |
@@ -138,6 +139,16 @@ PC Life Assistant is built around review-first workflows:
 
 ---
 
+### Dashboard data core
+
+The Dashboard globe is a local-first visualization of the same payload used by the surrounding system overview. Opening it promotes the data core into a viewport-sized workspace, separates physical/glass Earth hemispheres around a loaded GLB data platform, and distributes real nodes across deterministic three-dimensional orbital shells. The multi-depth stars, dust, nebula band, and reflections are generated locally—there are no remote runtime assets or telemetry calls.
+
+Drag to orbit, use the wheel or pinch gesture to zoom within safe limits, select a node to focus the camera, or use Reset view. Left/Right arrows traverse visible nodes. A real folder can be opened as a spatial child cluster through **Explore contents in 3D**; breadcrumbs, Back, Escape, search, filters, the semantic directory, and the WebGL fallback all use the same normalized node model. Supported UTF-8 text/code and bounded raster images have a read-only preview; the renderer requests only an indexed node ID, and the main process revalidates canonical authorized roots before reading. Unsupported content retains metadata and a secure Explorer reveal action. Closing the core restores the original Dashboard layout and focus. See [docs/3d-assets.md](docs/3d-assets.md) for the reproducible GLB/Blender asset workflow.
+
+The scene intentionally omits unavailable telemetry. Counts, capacities, paths, statuses, timestamps, and connection totals are only shown when derived from the dashboard service response; unavailable values are labeled accordingly.
+
+---
+
 ## 🧱 Architecture
 
 ```text
@@ -154,6 +165,12 @@ pc-life-assistant/
     services/               #   Renderer-side data helpers
     pages/                  #   Main app screens
     components/             #   Reusable UI components (incl. dashboard widgets)
+      dashboard/
+        DashboardGlobe.jsx   # Three.js globe scene and interaction state
+        GlobeNodePanel.jsx   # Accessible directory, search, and node details
+        globeLayout.js        # Pure node adapter, relationships, and layout
+        useDashboardNodeExplorer.js # Real folder scopes, breadcrumbs, and scene sync
+        globe-scene/          # Space environment, camera controller, and GLB loader
     layout/                 #   App shell, sidebar, topbar
     theme/                  #   Theme provider
     styles/                 #   Global styles and design tokens
@@ -176,7 +193,7 @@ pc-life-assistant/
 
 | Screen              | Purpose                                                                                                               |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Dashboard           | Redesigned daily status with a 3D live-nodes globe, quick actions, pinned projects, and health overview.              |
+| Dashboard           | Open a 3D data core, browse categorized local nodes, and review quick actions, pinned projects, and system health.    |
 | Project Hub         | Project scanning, search, filters, Git state, pinning, and Work Mode creation.                                        |
 | Work Modes          | Create, edit, duplicate, and launch repeatable workspaces.                                                            |
 | Workspace Templates | Generate starter folder structures for common project types.                                                          |
@@ -184,6 +201,7 @@ pc-life-assistant/
 | Screenshots         | Scan and organize screenshot images by date and category.                                                             |
 | Clean Center        | Review cleanup candidates and safe maintenance suggestions.                                                           |
 | Security Center     | Read-only Windows Security overview: Defender, firewall, TPM, BitLocker, and related status.                          |
+| PDF Tools           | Merge, split, convert, and edit PDFs locally via an embedded Stirling-PDF instance.                                   |
 | Automations         | Configure scheduled reminders and safe helper actions.                                                                |
 | System Monitor      | Inspect live hardware and resource status.                                                                            |
 | Health Monitor      | Review health checks, recommendations, and guard settings.                                                            |
@@ -192,7 +210,7 @@ pc-life-assistant/
 | EE Quick Tools      | Electrical-engineering calculators (Ohm's law, dividers, bidirectional resistor colour code, RC/LC, base conversion). |
 | Embedded Lab        | Compile/simulate Arduino/Verilog/VHDL/Octave/CMake projects, one-click flash to Arduino, and monitor a serial port.   |
 | Notification Center | Review app notifications and related actions.                                                                         |
-| Update Center       | Check the current version and install app updates.                                                                   |
+| Update Center       | Check the current version and install app updates.                                                                    |
 | Activity History    | Review recent organize, cleanup, and notification activity.                                                           |
 | Settings            | Manage paths, appearance, health guard, cleanup behavior, and preferences.                                            |
 | Setup Wizard        | Guided first-run setup for important folders and tools.                                                               |
@@ -208,6 +226,7 @@ pc-life-assistant/
 - Git, if you want to clone the source code instead of downloading a ZIP.
 - VS Code is optional but recommended for project launching features.
 - Optional, for the System Overlay only: Intel PresentMon or NVIDIA FrameView for the in-game FPS counter, and an NVIDIA GPU with `nvidia-smi` for GPU usage / VRAM. The overlay degrades gracefully and shows "N/A" when these are unavailable.
+- Optional, for PDF Tools only: internet access on first use, to download the embedded Java runtime and Stirling-PDF. After that, PDF processing runs fully locally.
 
 ---
 
@@ -217,8 +236,8 @@ There are two ways to use PC Life Assistant locally.
 
 ### Option A: Install the packaged app
 
-1. Download the latest Windows installer: [PC-Life-Assistant-Setup-2.5.7.exe](https://github.com/Tse1234321/windows-assistant/releases/download/v2.5.7/PC-Life-Assistant-Setup-2.5.7.exe).
-2. If Windows SmartScreen appears, choose **More info** and confirm you trust the downloaded file.
+1. Go to this repository's **Releases** page, if a release installer has been attached.
+2. Download `PC-Life-Assistant-Setup-2.5.7.exe`.
 3. Run the installer.
 4. Launch **PC Life Assistant** from the Start menu or desktop shortcut.
 
@@ -304,6 +323,8 @@ npm run package:dir
 | `npm run gen:icons`      | Generates app icon assets.                                       |
 | `npm run package`        | Builds and packages the Windows installer.                       |
 | `npm run package:dir`    | Builds an unpacked Windows app directory.                        |
+| `npm run package:signed` | Requires trusted signing credentials and fails closed otherwise. |
+| `npm run perf:packaged`  | Runs the explicit packaged-app performance probe.                |
 | `npm run release:github` | Maintainer release helper after publish settings are configured. |
 | `npm run lint`           | Runs ESLint.                                                     |
 | `npm run typecheck`      | Type-checks with `tsc --noEmit`.                                 |

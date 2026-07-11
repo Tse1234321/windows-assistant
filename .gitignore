@@ -26,6 +26,13 @@ playwright-report/
 # Generated icons (regenerated via `npm run gen:icons`)
 build/icon.png
 electron/assets/tray-icon.png
+scripts/3d/generated/
+
+# Code-signing credentials must only come from a secure local/CI secret store.
+*.pfx
+*.p12
+*.pem
+*.key
 
 # Logs
 npm-debug.log*

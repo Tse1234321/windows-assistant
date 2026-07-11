@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 
-// Three.js is ~520 KB — load the decorative globe after first paint instead
-// of blocking app startup on it.
+// Three.js is ~520 KB — load the interactive data core after first paint
+// instead of blocking app startup on it.
 const DashboardGlobe = lazy(() => import('../components/dashboard/DashboardGlobe.jsx'));
 import FileAnalytics from '../components/dashboard/FileAnalytics.jsx';
 import RecentActivities from '../components/dashboard/RecentActivities.jsx';

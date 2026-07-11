@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const electron = require('electron');
@@ -24,6 +25,88 @@ const BROWSE_LIMITS = {
   maxFolders: 80,
   maxFiles: 220,
 };
+
+const PREVIEW_LIMITS = Object.freeze({
+  maxTextReadBytes: 256 * 1024,
+  maxReturnedCharacters: 200000,
+  maxReturnedLines: 3000,
+  maxImageBytes: 5 * 1024 * 1024,
+  registryMaxEntries: 6000,
+  registryTtlMs: 30 * 60 * 1000,
+});
+
+const PREVIEW_ERRORS = Object.freeze({
+  invalidRequest: 'invalid_request',
+  invalidNode: 'invalid_node',
+  outsideAuthorizedRoot: 'outside_authorized_root',
+  notFound: 'not_found',
+  accessDenied: 'access_denied',
+  notFile: 'not_file',
+  unsupportedType: 'unsupported_type',
+  tooLarge: 'too_large',
+  binary: 'binary',
+  readFailed: 'read_failed',
+});
+
+const TEXT_PREVIEW_TYPES = new Map([
+  ['.txt', 'text/plain'],
+  ['.md', 'text/markdown'],
+  ['.csv', 'text/csv'],
+  ['.json', 'application/json'],
+  ['.jsonc', 'application/json'],
+  ['.xml', 'application/xml'],
+  ['.yaml', 'text/yaml'],
+  ['.yml', 'text/yaml'],
+  ['.ini', 'text/plain'],
+  ['.cfg', 'text/plain'],
+  ['.conf', 'text/plain'],
+  ['.toml', 'text/plain'],
+  ['.log', 'text/plain'],
+  ['.js', 'text/javascript'],
+  ['.jsx', 'text/javascript'],
+  ['.mjs', 'text/javascript'],
+  ['.cjs', 'text/javascript'],
+  ['.ts', 'text/typescript'],
+  ['.tsx', 'text/typescript'],
+  ['.css', 'text/css'],
+  ['.scss', 'text/x-scss'],
+  ['.py', 'text/x-python'],
+  ['.java', 'text/x-java-source'],
+  ['.c', 'text/x-c'],
+  ['.h', 'text/x-c'],
+  ['.cpp', 'text/x-c++'],
+  ['.hpp', 'text/x-c++'],
+  ['.cs', 'text/x-csharp'],
+  ['.go', 'text/x-go'],
+  ['.rs', 'text/x-rust'],
+  ['.sql', 'text/x-sql'],
+  ['.ps1', 'text/plain'],
+  ['.sh', 'text/plain'],
+  ['.bat', 'text/plain'],
+]);
+
+const IMAGE_PREVIEW_TYPES = new Map([
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.gif', 'image/gif'],
+  ['.webp', 'image/webp'],
+  ['.bmp', 'image/bmp'],
+]);
+
+const TEXT_PREVIEW_NAMES = new Set([
+  '.editorconfig',
+  '.gitignore',
+  '.gitattributes',
+  '.npmrc',
+  'dockerfile',
+  'makefile',
+  'license',
+  'readme',
+]);
+
+const authorizedNodeRegistry = new Map();
+const NODE_ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,127}$/i;
 
 const SEARCH_LIMITS = {
   maxResults: 30,
@@ -219,38 +302,222 @@ async function scanFolder(folderPath, label) {
   return stats;
 }
 
-async function browseNodePath(targetPath) {
-  const resolved = path.resolve(String(targetPath || ''));
-  const rootStat = await statSafe(resolved);
-  if (!rootStat || !rootStat.isDirectory()) {
-    return { ok: false, error: 'Path is not a browsable folder.' };
+function stableNodeId(kind, targetPath) {
+  const digest = crypto
+    .createHash('sha256')
+    .update(String(targetPath || '').toLowerCase(), 'utf8')
+    .digest('hex')
+    .slice(0, 24);
+  return `dashboard-${kind}-${digest}`;
+}
+
+function invalidPreview(code, nodeId, message, meta) {
+  return {
+    ok: false,
+    code,
+    nodeId: typeof nodeId === 'string' ? nodeId : '',
+    message,
+    ...(meta ? { meta } : {}),
+  };
+}
+
+function validNodeRequest(request) {
+  return (
+    request &&
+    typeof request === 'object' &&
+    !Array.isArray(request) &&
+    typeof request.nodeId === 'string' &&
+    NODE_ID_PATTERN.test(request.nodeId)
+  );
+}
+
+function isPathInside(rootPath, targetPath) {
+  const relative = path.relative(rootPath, targetPath);
+  return (
+    relative === '' ||
+    (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
+  );
+}
+
+async function canonicalizeExisting(targetPath) {
+  if (typeof targetPath !== 'string' || !targetPath || targetPath.includes('\0')) return null;
+  try {
+    return await fs.promises.realpath(path.resolve(targetPath));
+  } catch (_) {
+    return null;
   }
-  const entries = await readDirSafe(resolved);
+}
+
+async function authorizationScope(config = {}) {
+  const projectHub = projectService.normalizeProjectHub(config);
+  const directoryCandidates = [
+    ...dashboardFolderDefs().map(([, , folderPath]) => folderPath),
+    ...(projectHub.scanRoots || []),
+  ];
+  const fileCandidates = [];
+
+  for (const item of projectHub.pinnedProjects || []) {
+    if (!item?.path) continue;
+    if (item.isFile) fileCandidates.push(item.path);
+    else directoryCandidates.push(item.path);
+  }
+  for (const item of Array.isArray(config.projects) ? config.projects : []) {
+    if (typeof item === 'string') directoryCandidates.push(item);
+    else if (item?.path) directoryCandidates.push(item.path);
+  }
+
+  const roots = [];
+  const files = [];
+  for (const candidate of directoryCandidates) {
+    const canonical = await canonicalizeExisting(candidate);
+    if (!canonical) continue;
+    const stat = await statSafe(canonical);
+    if (
+      stat?.isDirectory() &&
+      !roots.some((root) => root.toLowerCase() === canonical.toLowerCase())
+    ) {
+      roots.push(canonical);
+    }
+  }
+  for (const candidate of fileCandidates) {
+    const canonical = await canonicalizeExisting(candidate);
+    if (!canonical) continue;
+    const stat = await statSafe(canonical);
+    if (stat?.isFile() && !files.some((file) => file.toLowerCase() === canonical.toLowerCase())) {
+      files.push(canonical);
+    }
+  }
+  return { roots, files };
+}
+
+function pathAllowed(scope, canonicalPath) {
+  return (
+    scope.files.some((file) => file.toLowerCase() === canonicalPath.toLowerCase()) ||
+    scope.roots.some((root) => isPathInside(root, canonicalPath))
+  );
+}
+
+function pruneAuthorizedNodes(now = Date.now()) {
+  for (const [nodeId, record] of authorizedNodeRegistry) {
+    if (record.expiresAt <= now) authorizedNodeRegistry.delete(nodeId);
+  }
+  while (authorizedNodeRegistry.size > PREVIEW_LIMITS.registryMaxEntries) {
+    authorizedNodeRegistry.delete(authorizedNodeRegistry.keys().next().value);
+  }
+}
+
+async function registerAuthorizedNode(nodeId, targetPath, config = {}, expectedKind, knownScope) {
+  if (!NODE_ID_PATTERN.test(String(nodeId || ''))) return false;
+  const canonical = await canonicalizeExisting(targetPath);
+  if (!canonical) return false;
+  const scope = knownScope || (await authorizationScope(config));
+  if (!pathAllowed(scope, canonical)) return false;
+  const stat = await statSafe(canonical);
+  if (!stat) return false;
+  const kind = stat.isDirectory() ? 'folder' : stat.isFile() ? 'file' : '';
+  if (!kind || (expectedKind && kind !== expectedKind)) return false;
+  pruneAuthorizedNodes();
+  authorizedNodeRegistry.set(nodeId, {
+    nodeId,
+    canonicalPath: canonical,
+    kind,
+    expiresAt: Date.now() + PREVIEW_LIMITS.registryTtlMs,
+  });
+  return true;
+}
+
+async function resolveAuthorizedNode(request, config = {}) {
+  if (!validNodeRequest(request)) {
+    return invalidPreview(PREVIEW_ERRORS.invalidRequest, '', 'The node request is invalid.');
+  }
+  pruneAuthorizedNodes();
+  const record = authorizedNodeRegistry.get(request.nodeId);
+  if (!record) {
+    return invalidPreview(PREVIEW_ERRORS.invalidNode, request.nodeId, 'The node is not indexed.');
+  }
+  const canonical = await canonicalizeExisting(record.canonicalPath);
+  if (!canonical) {
+    authorizedNodeRegistry.delete(request.nodeId);
+    return invalidPreview(
+      PREVIEW_ERRORS.notFound,
+      request.nodeId,
+      'The indexed item no longer exists.',
+    );
+  }
+  const scope = await authorizationScope(config);
+  if (!pathAllowed(scope, canonical)) {
+    return invalidPreview(
+      PREVIEW_ERRORS.outsideAuthorizedRoot,
+      request.nodeId,
+      'The indexed item is outside the authorized workspace.',
+    );
+  }
+  const stat = await statSafe(canonical);
+  if (!stat) {
+    return invalidPreview(
+      PREVIEW_ERRORS.notFound,
+      request.nodeId,
+      'The indexed item no longer exists.',
+    );
+  }
+  const kind = stat.isDirectory() ? 'folder' : stat.isFile() ? 'file' : '';
+  if (!kind || kind !== record.kind) {
+    return invalidPreview(
+      PREVIEW_ERRORS.invalidNode,
+      request.nodeId,
+      'The indexed item changed type.',
+    );
+  }
+  record.expiresAt = Date.now() + PREVIEW_LIMITS.registryTtlMs;
+  return { ok: true, record: { ...record, canonicalPath: canonical }, stat };
+}
+
+async function browseNode(request, config = {}) {
+  const resolvedNode = await resolveAuthorizedNode(request, config);
+  if (!resolvedNode.ok) return resolvedNode;
+  const { record, stat: rootStat } = resolvedNode;
+  if (!rootStat.isDirectory()) {
+    return invalidPreview(
+      PREVIEW_ERRORS.notFile,
+      request.nodeId,
+      'The node is not a browsable folder.',
+    );
+  }
+  const entries = await readDirSafe(record.canonicalPath);
   if (!entries) {
-    return { ok: false, error: 'Folder could not be read.' };
+    return invalidPreview(
+      PREVIEW_ERRORS.accessDenied,
+      request.nodeId,
+      'The folder could not be read.',
+    );
   }
 
   const folders = [];
   const files = [];
+  const scope = await authorizationScope(config);
   let truncated = false;
   for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
       if (folders.length >= BROWSE_LIMITS.maxFolders) {
         truncated = true;
         continue;
       }
-      folders.push({ name: entry.name, path: path.join(resolved, entry.name) });
+      const itemPath = path.join(record.canonicalPath, entry.name);
+      folders.push({ id: stableNodeId('folder', itemPath), name: entry.name, path: itemPath });
     } else if (entry.isFile()) {
       if (files.length >= BROWSE_LIMITS.maxFiles) {
         truncated = true;
         continue;
       }
-      files.push({ name: entry.name, path: path.join(resolved, entry.name) });
+      const itemPath = path.join(record.canonicalPath, entry.name);
+      files.push({ id: stableNodeId('file', itemPath), name: entry.name, path: itemPath });
     }
   }
 
   await Promise.all(
     folders.map(async (folder) => {
+      await registerAuthorizedNode(folder.id, folder.path, config, 'folder', scope);
       const children = await readDirSafe(folder.path);
       folder.itemCount = children ? children.length : null;
       const stat = await statSafe(folder.path);
@@ -259,6 +526,7 @@ async function browseNodePath(targetPath) {
   );
   await Promise.all(
     files.map(async (file) => {
+      await registerAuthorizedNode(file.id, file.path, config, 'file', scope);
       const stat = await statSafe(file.path);
       file.sizeBytes = stat ? stat.size : null;
       file.updatedAt = stat ? stat.mtime.toISOString() : '';
@@ -271,12 +539,165 @@ async function browseNodePath(targetPath) {
 
   return {
     ok: true,
-    path: resolved,
-    name: path.basename(resolved) || resolved,
+    nodeId: request.nodeId,
+    name: path.basename(record.canonicalPath) || 'Workspace',
     folders,
     files,
     truncated,
   };
+}
+
+function previewMetadata(nodeId, canonicalPath, stat, mimeType = '') {
+  return {
+    nodeId,
+    name: path.basename(canonicalPath),
+    extension: path.extname(canonicalPath).toLowerCase(),
+    mimeType,
+    sizeBytes: stat.size,
+    updatedAt: stat.mtime.toISOString(),
+  };
+}
+
+function previewType(canonicalPath) {
+  const extension = path.extname(canonicalPath).toLowerCase();
+  const baseName = path.basename(canonicalPath).toLowerCase();
+  if (TEXT_PREVIEW_TYPES.has(extension) || TEXT_PREVIEW_NAMES.has(baseName)) {
+    return { kind: 'text', mimeType: TEXT_PREVIEW_TYPES.get(extension) || 'text/plain' };
+  }
+  if (IMAGE_PREVIEW_TYPES.has(extension)) {
+    return { kind: 'image', mimeType: IMAGE_PREVIEW_TYPES.get(extension) };
+  }
+  return { kind: 'unsupported', mimeType: '' };
+}
+
+function looksBinary(buffer) {
+  if (!buffer.length) return false;
+  let controls = 0;
+  for (const value of buffer) {
+    if (value === 0) return true;
+    if (value < 9 || (value > 13 && value < 32)) controls += 1;
+  }
+  return controls / buffer.length > 0.02;
+}
+
+async function readTextPreview(record, stat, type) {
+  const bytesToRead = Math.min(stat.size, PREVIEW_LIMITS.maxTextReadBytes + 4);
+  const buffer = Buffer.alloc(bytesToRead);
+  let handle;
+  let bytesRead = 0;
+  try {
+    handle = await fs.promises.open(record.canonicalPath, 'r');
+    ({ bytesRead } = await handle.read(buffer, 0, bytesToRead, 0));
+  } catch (err) {
+    const code =
+      err?.code === 'EACCES' || err?.code === 'EPERM'
+        ? PREVIEW_ERRORS.accessDenied
+        : PREVIEW_ERRORS.readFailed;
+    return invalidPreview(code, record.nodeId, 'The file could not be read.');
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+
+  const slice = buffer.subarray(0, bytesRead);
+  if (looksBinary(slice)) {
+    return invalidPreview(
+      PREVIEW_ERRORS.binary,
+      record.nodeId,
+      'Binary content is not returned as text.',
+      previewMetadata(record.nodeId, record.canonicalPath, stat, type.mimeType),
+    );
+  }
+
+  let decoded;
+  try {
+    decoded = new TextDecoder('utf-8', { fatal: true }).decode(slice);
+  } catch (_) {
+    return invalidPreview(
+      PREVIEW_ERRORS.binary,
+      record.nodeId,
+      'The file is not valid UTF-8 text.',
+      previewMetadata(record.nodeId, record.canonicalPath, stat, type.mimeType),
+    );
+  }
+
+  let content = decoded;
+  let truncated = stat.size > PREVIEW_LIMITS.maxTextReadBytes;
+  if (content.length > PREVIEW_LIMITS.maxReturnedCharacters) {
+    content = content.slice(0, PREVIEW_LIMITS.maxReturnedCharacters);
+    truncated = true;
+  }
+  const lines = content.split(/\r?\n/);
+  if (lines.length > PREVIEW_LIMITS.maxReturnedLines) {
+    content = lines.slice(0, PREVIEW_LIMITS.maxReturnedLines).join('\n');
+    truncated = true;
+  }
+
+  return {
+    ok: true,
+    code: 'ok',
+    nodeId: record.nodeId,
+    kind: 'text',
+    encoding: 'utf-8',
+    content,
+    truncated,
+    meta: previewMetadata(record.nodeId, record.canonicalPath, stat, type.mimeType),
+  };
+}
+
+async function readImagePreview(record, stat, type) {
+  const meta = previewMetadata(record.nodeId, record.canonicalPath, stat, type.mimeType);
+  if (stat.size > PREVIEW_LIMITS.maxImageBytes) {
+    return invalidPreview(
+      PREVIEW_ERRORS.tooLarge,
+      record.nodeId,
+      'The image is too large for an inline preview.',
+      meta,
+    );
+  }
+  try {
+    const buffer = await fs.promises.readFile(record.canonicalPath);
+    return {
+      ok: true,
+      code: 'ok',
+      nodeId: record.nodeId,
+      kind: 'image',
+      encoding: 'base64',
+      dataUrl: `data:${type.mimeType};base64,${buffer.toString('base64')}`,
+      truncated: false,
+      meta,
+    };
+  } catch (err) {
+    const code =
+      err?.code === 'EACCES' || err?.code === 'EPERM'
+        ? PREVIEW_ERRORS.accessDenied
+        : PREVIEW_ERRORS.readFailed;
+    return invalidPreview(code, record.nodeId, 'The image could not be read.', meta);
+  }
+}
+
+async function previewNode(request, config = {}) {
+  const resolvedNode = await resolveAuthorizedNode(request, config);
+  if (!resolvedNode.ok) return resolvedNode;
+  const { record, stat } = resolvedNode;
+  if (!stat.isFile()) {
+    return invalidPreview(
+      PREVIEW_ERRORS.notFile,
+      request.nodeId,
+      'A directory cannot be previewed as a file.',
+    );
+  }
+  const type = previewType(record.canonicalPath);
+  const meta = previewMetadata(record.nodeId, record.canonicalPath, stat, type.mimeType);
+  if (type.kind === 'unsupported') {
+    return invalidPreview(
+      PREVIEW_ERRORS.unsupportedType,
+      request.nodeId,
+      'This file type does not support inline preview.',
+      meta,
+    );
+  }
+  if (type.kind === 'image') return readImagePreview(record, stat, type);
+  return readTextPreview(record, stat, type);
 }
 
 function node(input) {
@@ -303,12 +724,7 @@ function normalizeFolderSearch(value) {
 }
 
 function searchResultId(folderPath) {
-  const encoded = Buffer.from(String(folderPath || ''), 'utf8')
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
-  return `folder-search-${encoded.slice(0, 48)}`;
+  return stableNodeId('folder', folderPath);
 }
 
 async function immediateItemCount(folderPath) {
@@ -335,7 +751,7 @@ function folderSearchNode(match, stat, itemCount) {
   });
 }
 
-async function searchFolderNodes(query) {
+async function searchFolderNodes(query, config = {}) {
   const normalized = normalizeFolderSearch(query);
   if (!normalized) {
     return { ok: true, query: '', nodes: [], truncated: false, searchedDirs: 0 };
@@ -424,6 +840,12 @@ async function searchFolderNodes(query) {
       ]);
       return folderSearchNode(match, stat, itemCount);
     }),
+  );
+  const scope = await authorizationScope(config);
+  await Promise.all(
+    nodes.map((searchNode) =>
+      registerAuthorizedNode(searchNode.id, searchNode.path, config, 'folder', scope),
+    ),
   );
 
   return {
@@ -781,6 +1203,14 @@ async function getDashboardStats(config) {
     ...automation.nodes,
     organizedNode,
   ];
+  const scope = await authorizationScope(config);
+  await Promise.all(
+    nodes
+      .filter((dashboardNode) => dashboardNode.path)
+      .map((dashboardNode) =>
+        registerAuthorizedNode(dashboardNode.id, dashboardNode.path, config, undefined, scope),
+      ),
+  );
 
   const disk = (metrics.disks || []).find((item) => item.ok) || null;
   const totalFiles = Object.values(fileStats.folders).reduce(
@@ -844,9 +1274,19 @@ async function getDashboardStats(config) {
 }
 
 module.exports = {
-  browseNodePath,
+  browseNode,
   getDashboardStats,
   getFileCategoryStats,
   getProjectStats,
+  previewNode,
+  resolveAuthorizedNode,
   searchFolderNodes,
+  PREVIEW_ERRORS,
+  PREVIEW_LIMITS,
+  __testing: {
+    authorizedNodeRegistry,
+    registerAuthorizedNode,
+    resetAuthorizedNodes: () => authorizedNodeRegistry.clear(),
+    stableNodeId,
+  },
 };

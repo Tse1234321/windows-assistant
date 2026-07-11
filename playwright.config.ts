@@ -18,6 +18,9 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,
+  // Each dashboard page can own a WebGL context. Run browser flows serially so
+  // renderer tests cannot starve unrelated navigation tests on shared GPUs.
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: 'list',
