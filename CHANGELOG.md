@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.5.8 - Cinematic Dashboard data core (2026-07-11)
+
+This release promotes the Dashboard globe into a production data-core
+workspace. The visual system now matches the holographic split-Earth concept
+while staying connected to real local dashboard data.
+
+- Rebuilt the Dashboard globe as a fullscreen Three.js data universe with
+  split-glass Earth hemispheres, a central GLB data platform, orbital
+  connection paths, floating folder/file nodes, and surrounding data panels.
+- Added a real categorized node model for files, projects, system health,
+  cleanup, and automation. Folder nodes can expand into a spatial child cluster
+  through **Explore contents in 3D**.
+- Hardened node browsing and previews through indexed node IDs, main-process
+  canonical root validation, bounded read-only text/image previews, and secure
+  Explorer reveal actions.
+- Added reproducible 3D asset tooling and validation for
+  `src/assets/3d/dashboard-data-universe.glb`; the runtime asset is embedded,
+  texture-free, and has no external resource fetches.
+- Added regression coverage for globe layout, real node exploration, WebGL/GLB
+  fallback, reduced motion, keyboard activation, responsive framing, stale
+  preview suppression, and secure reveal behavior.
+- Added Windows signing readiness docs/scripts and a signed release path that
+  fails closed when trusted signing credentials are not configured.
+
 ## 2.5.7 — Plain-language diagnostics verdict (2026-07-06)
 
 Follow-up to the diagnostics bundle: the raw JSON was accurate but unreadable

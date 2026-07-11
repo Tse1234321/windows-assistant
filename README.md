@@ -7,7 +7,7 @@
 One place to launch projects, organize files, monitor system health, and keep daily development workflows tidy — without replacing your task manager or IDE.
 
 [![Clone](https://img.shields.io/badge/clone%20and%20build-ready-14b8a6.svg)](#install-on-your-pc)
-[![Version](https://img.shields.io/badge/version-2.5.7-2f7bf6.svg)](#)
+[![Version](https://img.shields.io/badge/version-2.5.8-2f7bf6.svg)](#)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d6.svg)](#requirements)
 [![Electron](https://img.shields.io/badge/Electron-42-47848f.svg)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
@@ -30,7 +30,7 @@ PC Life Assistant combines a daily workspace dashboard, project launcher, file o
 
 The goal is not to be another todo list — it's to **remove the small repeated steps** around everyday computer work: opening the same folders and tools, sorting the Downloads folder, keeping an eye on disk space and temperatures, and remembering which projects still need a Git commit.
 
-- 🔒 **Review-first & safe by design** — file actions preview before moving, never auto-delete, and Git features are read-only.
+- 🔒 **Review-first & safe by design** — file previews are read-only and bounded, file actions preview before moving, cleanup never auto-deletes, and Git features are read-only.
 - 🧼 **Clean public source** — the repository ships only sanitized templates and source code, so anyone can clone it and create their own local settings on first run.
 - 🧩 **No account, no cloud, no database** — every setting lives in a local JSON file.
 - 🛡️ **No admin rights required** — works entirely within the folders you configure.
@@ -43,7 +43,7 @@ The goal is not to be another todo list — it's to **remove the small repeated 
 
 | Area                     | What it does                                                                                                                                                                                                                                                                       |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Dashboard**            | Interactive Three.js data core with categorized local file, project, system, cleanup, and automation nodes; keyboard and mobile controls; health score; live system overview; and recent activity.                                                                                 |
+| **Dashboard**            | Interactive Three.js data core with split-glass Earth hemispheres, a central GLB data platform, categorized local file/project/system/cleanup/automation nodes, secure read-only previews, keyboard/mobile controls, health score, live system overview, and recent activity.      |
 | **Project Hub**          | Scans your project roots, classifies projects by type, detects Git repos, filters and pins, and turns selected projects into a reusable Work Mode.                                                                                                                                 |
 | **Work Modes**           | Opens apps, folders, URLs, and shell commands as one repeatable workspace — for coding, study, design, reports, or hardware work.                                                                                                                                                  |
 | **Workspace Templates**  | Generates starter folders for Web, Python, JS/TS, C/C++, Java, Go, Rust, Arduino, FPGA (Verilog/VHDL), STM32, MATLAB, KiCad, and custom multi-language combos.                                                                                                                     |
@@ -234,10 +234,14 @@ pc-life-assistant/
 
 There are two ways to use PC Life Assistant locally.
 
+### Latest release
+
+Version **2.5.8** ships the cinematic Dashboard data core: a fullscreen 3D globe workspace with split Earth hemispheres, real local folder/file nodes, secure read-only previews, reproducible GLB assets, and hardened Electron IPC for indexed node browsing.
+
 ### Option A: Install the packaged app
 
 1. Go to this repository's **Releases** page, if a release installer has been attached.
-2. Download `PC-Life-Assistant-Setup-2.5.7.exe`.
+2. Download `PC-Life-Assistant-Setup-2.5.8.exe`.
 3. Run the installer.
 4. Launch **PC Life Assistant** from the Start menu or desktop shortcut.
 
@@ -285,7 +289,7 @@ npm run package
 The generated installer is written to:
 
 ```text
-release-auto\PC-Life-Assistant-Setup-2.5.7.exe
+release-auto\PC-Life-Assistant-Setup-2.5.8.exe
 ```
 
 Build outputs such as `dist/`, `release-auto/`, `node_modules/`, generated icons, logs, and real settings files are intentionally ignored by Git.
