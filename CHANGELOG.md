@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.5.9 - Packaged startup hotfix (2026-07-11)
+
+This hotfix removes stale PDF integration references from the Electron main
+process and preload bridge. The PDF page/service had already been removed from
+the public build, but the previous dashboard sync reintroduced the main-process
+`require`, causing installed releases to fail before the first window opened.
+
+- Removed the unavailable Stirling-PDF IPC bridge and shutdown hook.
+- Removed the corresponding stale PDF documentation and translation label.
+- Hardened the release validation path before repackaging the installer.
+
 ## 2.5.8 - Cinematic Dashboard data core (2026-07-11)
 
 This release promotes the Dashboard globe into a production data-core

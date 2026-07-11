@@ -193,31 +193,6 @@ contextBridge.exposeInMainWorld('api', {
   adminLaunch: adminLaunchApi,
   setupTools: setupToolsApi,
 
-  // PDF Tools (embedded Stirling-PDF)
-  stirling: {
-    getStatus: () => ipcRenderer.invoke('stirling:getStatus'),
-    downloadJre: () => ipcRenderer.invoke('stirling:downloadJre'),
-    download: () => ipcRenderer.invoke('stirling:downloadJar'),
-    start: (options) => ipcRenderer.invoke('stirling:start', options),
-    stop: () => ipcRenderer.invoke('stirling:stop'),
-    openExternal: () => ipcRenderer.invoke('stirling:openExternal'),
-    onProgress: (callback) => {
-      const handler = (_event, progress) => callback(progress);
-      ipcRenderer.on('stirling:progress', handler);
-      return () => ipcRenderer.removeListener('stirling:progress', handler);
-    },
-    onStatus: (callback) => {
-      const handler = (_event, state) => callback(state);
-      ipcRenderer.on('stirling:status', handler);
-      return () => ipcRenderer.removeListener('stirling:status', handler);
-    },
-    onLog: (callback) => {
-      const handler = (_event, line) => callback(line);
-      ipcRenderer.on('stirling:log', handler);
-      return () => ipcRenderer.removeListener('stirling:log', handler);
-    },
-  },
-
   // System overlay
   overlay: {
     getSettings: () => ipcRenderer.invoke('overlay:getSettings'),

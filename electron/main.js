@@ -44,7 +44,6 @@ const serialService = require('./services/serialService');
 const dashboardService = require('./services/dashboardService');
 const diagnosticsService = require('./services/diagnosticsService');
 const overlayMetricsService = require('./services/overlayMetricsService');
-const stirlingService = require('./services/stirlingService');
 const brightnessService = require('./services/brightnessService');
 const { logger } = require('./services/loggerService');
 const { DASHBOARD_CHANNELS } = require('./ipcChannels');
@@ -428,8 +427,6 @@ function createWindow(showOnReady = true) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      // The PDF Tools page embeds the local Stirling-PDF UI in a <webview>.
-      webviewTag: true,
     },
   });
 
@@ -1054,29 +1051,6 @@ function registerIpc() {
     ),
   );
   ipcMain.handle('build:cancel', async () => buildService.cancelBuild());
-
-  // PDF Tools — Stirling-PDF runtime/JAR provisioning + local server lifecycle.
-  ipcMain.handle('stirling:getStatus', async () => stirlingService.getStatus());
-  ipcMain.handle('stirling:downloadJre', async () =>
-    stirlingService.downloadJre((progress) => sendToRenderer('stirling:progress', progress)),
-  );
-  ipcMain.handle('stirling:downloadJar', async () =>
-    stirlingService.downloadJar((progress) => sendToRenderer('stirling:progress', progress)),
-  );
-  ipcMain.handle('stirling:start', async (_event, options = {}) =>
-    stirlingService.start(
-      options,
-      (line) => sendToRenderer('stirling:log', line),
-      (state) => sendToRenderer('stirling:status', state),
-    ),
-  );
-  ipcMain.handle('stirling:stop', async () => stirlingService.stop());
-  ipcMain.handle('stirling:openExternal', async () => {
-    const status = await stirlingService.getStatus();
-    const url = status.server && status.server.url;
-    if (url) shell.openExternal(url);
-    return { ok: !!url };
-  });
 
   // Serial Monitor — list ports and stream incoming data.
   ipcMain.handle('serial:listPorts', async () => serialService.listPorts());
@@ -2217,10 +2191,4 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
-  // Don't leave the Stirling-PDF Java server orphaned after the app exits.
-  try {
-    stirlingService.stop();
-  } catch (_) {
-    /* ignore */
-  }
 });

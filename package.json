@@ -1,6 +1,6 @@
 {
   "name": "pc-life-assistant",
-  "version": "2.5.8",
+  "version": "2.5.9",
   "description": "PC Life Assistant - Windows desktop assistant for file organization, project shortcuts, automations, system monitoring, and Git health checks.",
   "author": "NEXUS",
   "license": "MIT",
@@ -21,6 +21,7 @@
     "package:signed": "node scripts/check-signing-env.mjs && npm run gen:icons && npm run build && electron-builder --config.forceCodeSigning=true",
     "release:github": "npm run release:signed",
     "release:signed": "node scripts/check-signing-env.mjs && npm run gen:icons && npm run build && electron-builder --publish always --config.forceCodeSigning=true",
+    "validate:electron": "node scripts/validate-electron-entrypoints.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -30,7 +31,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "arch": "depcruise --config .dependency-cruiser.cjs electron src",
-    "verify": "npm run typecheck && npm run test && npm run lint && npm run arch",
+    "verify": "npm run validate:electron && npm run typecheck && npm run test && npm run lint && npm run arch",
     "test:e2e": "npm run build && playwright test"
   },
   "build": {
