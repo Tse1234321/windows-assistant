@@ -68,9 +68,10 @@ Expected result:
 - `npm run package` and `npm run package:dir` allow unsigned local development builds.
 - `npm run package:signed` requires signing credentials and passes `forceCodeSigning=true` to electron-builder.
 - `npm run release:github` and `npm run release:signed` require signing credentials before publishing.
+- `npm run release:unsigned` intentionally publishes without signing and is used by the tag workflow only when the GitHub signing secrets are absent.
 - `scripts/check-signing-env.mjs` validates only credential presence. It never prints or reads certificate contents.
 
-The signed commands fail before packaging when neither a complete `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` pair nor `CSC_NAME` exists. This prevents the tag workflow from silently publishing an unsigned installer.
+The signed commands fail before packaging when neither a complete `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` pair nor `CSC_NAME` exists. The tag workflow chooses the signed command when its secrets are present and otherwise uses the explicitly unsigned command; every unsigned release must disclose the SmartScreen and publisher-trust tradeoff.
 
 ## GitHub Actions Secrets
 

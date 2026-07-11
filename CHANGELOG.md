@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.5.10 - Automatic unsigned release fallback (2026-07-11)
+
+This release keeps the public tag workflow usable when no trusted Windows code
+signing certificate is configured. The workflow signs when secrets are present;
+otherwise it publishes an explicitly unsigned installer and discloses the
+SmartScreen and publisher-trust tradeoff.
+
+- Added a dedicated `release:unsigned` publishing command.
+- Kept `package:signed` and `release:signed` fail-closed for deliberate signed builds.
+- Updated Windows distribution docs and the signing ADR to record the fallback.
+
 ## 2.5.9 - Packaged startup hotfix (2026-07-11)
 
 This hotfix removes stale PDF integration references from the Electron main

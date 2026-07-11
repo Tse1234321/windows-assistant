@@ -1,8 +1,10 @@
 name: Release
 
 # Build and publish the Windows installer when a version tag is pushed.
-# Uses the existing electron-builder config in package.json (publishes to the
-# GitHub release for the tag). electron-builder needs Windows to produce NSIS.
+# Prefer trusted signing when repository secrets are available. When no
+# certificate is configured, publish an explicitly unsigned installer so the
+# release remains usable; the workflow output and release notes must disclose
+# that status. Explicit package:signed/release:signed commands stay fail-closed.
 on:
   push:
     tags: ['v*']
@@ -26,8 +28,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build, sign, verify signing requirement, and publish
-        run: npm run release:signed
+      - name: Build and publish Windows installer
+        shell: pwsh
+        run: |
+          if ($env:WIN_CSC_LINK -and $env:WIN_CSC_KEY_PASSWORD) {
+            Write-Host 'Trusted Windows signing credentials detected; publishing signed installer.'
+            npm run release:signed
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $notes = 'Windows installer published with the configured trusted signing identity.'
+          } else {
+            Write-Warning 'Trusted Windows signing credentials are not configured; publishing unsigned installer.'
+            npm run release:unsigned
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $notes = 'This release contains an unsigned Windows installer because trusted signing credentials were not configured. SmartScreen may display a warning and no publisher reputation is attached.'
+          }
+          gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --notes $notes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}

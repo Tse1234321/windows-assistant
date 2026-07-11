@@ -325,6 +325,7 @@ npm run package:dir
 | `npm run package`        | Builds and packages the Windows installer.                       |
 | `npm run package:dir`    | Builds an unpacked Windows app directory.                        |
 | `npm run package:signed` | Requires trusted signing credentials and fails closed otherwise. |
+| `npm run release:unsigned` | Publishes an unsigned GitHub release asset; use only when signing credentials are unavailable and disclose the SmartScreen tradeoff. |
 | `npm run perf:packaged`  | Runs the explicit packaged-app performance probe.                |
 | `npm run release:github` | Maintainer release helper after publish settings are configured. |
 | `npm run lint`           | Runs ESLint.                                                     |
